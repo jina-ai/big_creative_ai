@@ -1,0 +1,8 @@
+jtype: BIGDreamBooth
+py_modules:
+  - executor.py
+metas:
+  name: BIGDreamBooth
+  description: BigDreamBooth trains StableD Diffusion
+  url: 
+  keywords: ['']
