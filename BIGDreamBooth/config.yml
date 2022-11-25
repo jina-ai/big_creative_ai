@@ -3,6 +3,6 @@ py_modules:
   - executor.py
 metas:
   name: BIGDreamBooth
-  description: BigDreamBooth trains StableD Diffusion
+  description: BigDreamBooth trains Stable Diffusion
   url: 
   keywords: ['']

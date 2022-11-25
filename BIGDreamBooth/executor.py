@@ -36,6 +36,13 @@ RARE_IDENTIFIERS = [
     'dmd',
     'dld',
     'dvu',
+    'dwd',
+    'dxd',
+    'dyd',
+    'dzd',
+    'scs',
+    'qtq',
+    'qrq',
 ]
 
 
@@ -64,7 +71,7 @@ class BIGDreamBooth(Executor):
             os.makedirs(self.models_dir, exist_ok=True)
         download_pretrained_stable_diffusion_model(self.models_dir)
 
-        self.used_identifiers: Dict[str, List[str]] = defaultdict(List[str])
+        self.user_to_identifiers_and_class_names: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
 
         write_basic_config(mixed_precision='no')
 
@@ -94,6 +101,17 @@ class BIGDreamBooth(Executor):
             raise ValueError(f'Unknown target model {target_model}; must be either "own" or "{METAMODEL_ID}"')
         return user_id
 
+    @secure_request(SecurityLevel.USER, on='/list_identifiers_n_classes')
+    def get_identifiers_n_classes(self, parameters, **kwargs):
+        """Returns the identifiers & their classes of the models which were trained for the user and the metamodel."""
+        user_id = _get_user_info(parameters['jwt']['token'])['_id']
+        return Document(
+            tags={
+                'own': self.user_to_identifiers_and_class_names[user_id],
+                METAMODEL_ID: self.user_to_identifiers_and_class_names[METAMODEL_ID]
+            }
+        )
+
     @secure_request(level=SecurityLevel.USER, on='/finetune')
     def finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
         """Finetunes stable diffusion model with DreamBooth for given object and returns the used identifier for that
@@ -113,7 +131,7 @@ class BIGDreamBooth(Executor):
 
         user_id = self._get_user_id(parameters)
 
-        identifier = self._get_next_identifier(self.used_identifiers[user_id])
+        identifier = self._get_next_identifier(list(self.user_to_identifiers_and_class_names[user_id].keys()))
         instance_prompt = f"a {identifier} {class_name}"
 
         # save finetuned model into user_id/identifier folder if user_id is not metamodel, else save into METAMODEL_DIR
@@ -153,7 +171,7 @@ class BIGDreamBooth(Executor):
                 error_message = err.decode('utf-8').split('ERROR')[-1]
                 raise RuntimeError(f'DreamBooth failed\n{error_message}')
 
-        self.used_identifiers[user_id].append(identifier)
+        self.user_to_identifiers_and_class_names[user_id][identifier] = class_name
         return identifier
 
     @secure_request(level=SecurityLevel.USER, on='/generate')
@@ -176,9 +194,10 @@ class BIGDreamBooth(Executor):
         user_id = self._get_user_id(parameters)
         if user_id != METAMODEL_ID:
             identifier = parameters.get('identifier', '')
-            if not identifier or identifier not in self.used_identifiers[user_id]:
+            if not identifier or identifier not in list(self.user_to_identifiers_and_class_names[user_id].keys()):
                 raise ValueError(f'No identifier provided in parameters or identifier not used for finetuning\n'
-                                 f'(identifier: "{identifier}", used identifiers: {self.used_identifiers[user_id]})')
+                                 f'(identifier: "{identifier}", '
+                                 f'used identifiers: {list(self.user_to_identifiers_and_class_names[user_id].keys())})')
         else:
             identifier = None
 

@@ -11,7 +11,7 @@ executors:
   - name: dreambooth
     uses: jinahub+docker://BIGDreamBooth/latest-gpu
     uses_with:
-      hf_token:
+      hf_token: ${{ ENV.HF_TOKEN }}
     env:
       JINA_LOG_LEVEL: DEBUG
     jcloud:

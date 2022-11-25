@@ -7,6 +7,7 @@ import hubble
 prompt = 'a picasso painting of a sks [class_name]'
 identifier = 'sks'
 
+
 client = Client(host='')
 
 image_docs = client.post(
