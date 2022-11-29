@@ -19,7 +19,7 @@ identifier_doc = client.post(
         },
         'class_name': class_name,
         'target_model': 'own',  # 'own' for training from pretrained model, 'meta' for training metamodel
-    }
+    },
 )
 
 print(f"Finetunging was successful. The identifier for the object is {identifier_doc[0].text}")
