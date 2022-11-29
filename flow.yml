@@ -1,6 +1,6 @@
 jtype: Flow
 with:
-  monitoring: true
+#  monitoring: true
   env:
     JINA_LOG_LEVEL: DEBUG
 jcloud:
@@ -9,11 +9,14 @@ jcloud:
     project: big-creative-ai
 executors:
   - name: dreambooth
-    uses: jinahub+docker://BIGDreamBooth/latest-gpu
+    uses: jinahub+docker://2h1j2v7o/v0.0.1-test-5-gpu
     uses_with:
       hf_token: ${{ ENV.HF_TOKEN }}
     env:
       JINA_LOG_LEVEL: DEBUG
-    jcloud:
-      resources:
-        gpu: '1'
+    timeout_ready: -1
+    gpu:
+      devices: [2]
+#    jcloud:
+#      resources:
+#        gpu: '1'
