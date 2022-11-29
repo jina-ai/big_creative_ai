@@ -229,6 +229,7 @@ class BIGDreamBoothExecutor(Executor):
 
 def download_pretrained_stable_diffusion_model(model_dir: str, sd_version: str = 'stable-diffusion-v1-4'):
     """Downloads pretrained stable diffusion model."""
+    # todo: skip download if we can load pretrained weights from disk
     pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True)
     for dir in [PRE_TRAINDED_MODEL_DIR, METAMODEL_DIR]:
         pipe.save_pretrained(os.path.join(model_dir, dir))
