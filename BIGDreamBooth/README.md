@@ -1,3 +1,3 @@
-# BIGDreamBooth
+# BIGDreamBoothExecutor
 
-BigDreamBooth trains Stable Diffusion
+BIGDreamBoothExecutor trains Stable Diffusion

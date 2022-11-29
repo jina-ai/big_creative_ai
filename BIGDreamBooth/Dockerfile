@@ -1,7 +1,7 @@
 ARG JINA_VERSION=3.12.0
 
 
-FROM jinaai/jina:${JINA_VERSION}
+FROM jinaai/jina:${JINA_VERSION}-py39-standard
 
 RUN apt-get update && apt-get install --no-install-recommends -y gcc libc6-dev git
 

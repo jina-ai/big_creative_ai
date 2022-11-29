@@ -1,8 +1,8 @@
-jtype: BIGDreamBooth
+jtype: BIGDreamBoothExecutor
 py_modules:
-  - executor.py
+  - executor/__init__.py
 metas:
-  name: BIGDreamBooth
-  description: BigDreamBooth trains Stable Diffusion
+  name: BIGDreamBoothExecutor
+  description: BIGDreamBoothExecutor trains Stable Diffusion
   url: 
   keywords: ['']

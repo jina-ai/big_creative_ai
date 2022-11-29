@@ -1,5 +1,6 @@
 --find-links https://download.pytorch.org/whl/cpu
 
+prometheus_client
 diffusers>==0.5.0
 accelerate
 torchvision

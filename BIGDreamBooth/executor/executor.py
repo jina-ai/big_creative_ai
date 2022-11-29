@@ -1,21 +1,20 @@
 import io
 import os
 import subprocess
+import sys
 import tempfile
 from collections import defaultdict
 from typing import List, Dict
 
 from accelerate.utils import write_basic_config
-import PIL
-import torch
 from diffusers import StableDiffusionPipeline
 from docarray import Document
-from jina import DocumentArray
 from huggingface_hub import login as hf_login
+from jina import DocumentArray
+import PIL
+import torch
 
-from auth import get_auth_executor_class, secure_request, SecurityLevel, _get_user_info
-
-Executor = get_auth_executor_class()
+from .auth import NOWAuthExecutor as Executor, secure_request, SecurityLevel, _get_user_info
 
 
 PRE_TRAINDED_MODEL_DIR = 'stable-diffusion-v1-4'
@@ -43,11 +42,12 @@ RARE_IDENTIFIERS = [
     'scs',
     'qtq',
     'qrq',
+    'xjy',
 ]
 
 
-class BIGDreamBooth(Executor):
-    """BigDreamBooth trains Stable Diffusion"""
+class BIGDreamBoothExecutor(Executor):
+    """BIGDreamBoothExecutor trains Stable Diffusion"""
 
     def __init__(
             self,
@@ -107,8 +107,8 @@ class BIGDreamBooth(Executor):
         user_id = _get_user_info(parameters['jwt']['token'])['_id']
         return Document(
             tags={
-                'own': self.user_to_identifiers_and_class_names[user_id],
-                METAMODEL_ID: self.user_to_identifiers_and_class_names[METAMODEL_ID]
+                'own': self.user_to_identifiers_and_class_names.get(user_id, {}),
+                METAMODEL_ID: self.user_to_identifiers_and_class_names.get(METAMODEL_ID)
             }
         )
 
@@ -154,22 +154,27 @@ class BIGDreamBooth(Executor):
                 doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'), image_format='png')
 
             # execute dreambooth.py
+            cur_dir = os.path.abspath(os.path.join(__file__, '..'))
             _, err = cmd(
-                f'''accelerate dreambooth.py 
-                    --pretrained_model_name_or_path="{pretrained_model_dir}" 
-                    --output_dir="{output_dir}" 
-                    --instance_data_dir="{instance_data_dir}" 
-                    --instance_prompt="{instance_prompt}" 
-                    --resolution=512 
-                    --train_batch_size=1 
-                    --learning_rate=5e-6 --lr_scheduler="constant" --lr_warmup_steps=0 
-                    --max_train_steps=200
-                    --gradient_accumulation_steps=1
-                '''
+                [
+                    'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
+                    "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
+                    "--output_dir", f"{output_dir}",
+                    "--instance_data_dir", f"{instance_data_dir}",
+                    "--instance_prompt", f"{instance_prompt}",
+                    "--resolution", "512",
+                    "--learning_rate", "5e-6", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
+                    "--max_train_steps", "200", "--train_batch_size", "1",
+                    "--gradient_accumulation_steps", "1"
+                 ]
+
             )
             if err:
+                print("Error while executing dreambooth.py:", file=sys.stderr)
                 error_message = err.decode('utf-8').split('ERROR')[-1]
-                raise RuntimeError(f'DreamBooth failed\n{error_message}')
+                for line in error_message.splitlines():
+                    print(line, file=sys.stderr)
+                raise RuntimeError(f'DreamBooth failed')
 
         self.user_to_identifiers_and_class_names[user_id][identifier] = class_name
         return identifier
