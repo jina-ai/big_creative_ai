@@ -52,6 +52,7 @@ class BIGDreamBoothExecutor(Executor):
     def __init__(
             self,
             hf_token: str,
+            device: str = 'cuda',
             *args,
             **kwargs
     ):
@@ -60,7 +61,7 @@ class BIGDreamBoothExecutor(Executor):
         hf_login(token=hf_token)
 
         # determine if gpu is available
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.device = device
 
         self.models_dir = (
             os.path.join(self.workspace, 'models')
