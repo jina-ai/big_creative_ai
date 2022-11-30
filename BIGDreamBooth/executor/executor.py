@@ -77,8 +77,12 @@ class BIGDreamBoothExecutor(Executor):
         self.user_to_identifiers_and_class_names_path = os.path.join(
             self.models_dir, 'user_to_identifiers_and_class_names.json'
         )
-        with open(self.user_to_identifiers_and_class_names_path, 'r') as fp:
-            self.user_to_identifiers_and_class_names = json.load(fp)
+        if os.path.exists(self.user_to_identifiers_and_class_names_path):
+            with open(self.user_to_identifiers_and_class_names_path, 'r') as fp:
+                tmp_dict = json.load(fp)
+                # update the dict
+                for user_id, identifiers_and_class_names in tmp_dict.items():
+                    self.user_to_identifiers_and_class_names[user_id].update(identifiers_and_class_names)
 
         write_basic_config(mixed_precision='no')
 
@@ -169,6 +173,7 @@ class BIGDreamBoothExecutor(Executor):
                     doc.load_uri_to_image_tensor(timeout=10)
                 doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'), image_format='png')
 
+            torch.cuda.empty_cache()
             # execute dreambooth.py
             cur_dir = os.path.abspath(os.path.join(__file__, '..'))
             # note this the output and error are switched for accelerate launch dreambooth.py
@@ -228,15 +233,20 @@ class BIGDreamBoothExecutor(Executor):
 
         model_path = self._get_model_dir(user_id, identifier)
 
+        doc = self._generate(model_path=model_path, prompt=prompt)
+        torch.cuda.empty_cache()
+
+        return DocumentArray(doc)
+
+    def _generate(self, model_path: str, prompt: str) -> Document:
         pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16).to(self.device)
         pipe.safety_checker = None
-
         image: PIL.Image.Image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
         # save pil image to blob
         with io.BytesIO() as buffer:
             image.save(buffer, format='png')
             doc = Document(blob=buffer.getvalue())
-        return DocumentArray(doc)
+        return doc
 
     @staticmethod
     def _get_next_identifier(used_identifiers: List[str]) -> str:
