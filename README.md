@@ -2,7 +2,7 @@
 
 This is based on [DreamBooth in huggingface/diffusers](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth).
 
-## Finetuning Model
+## Finetuning Model (Step-by-step)
 
 You can finetune your own  or the metamodel wth your own style or object. For that:
 
@@ -15,12 +15,13 @@ You can finetune your own  or the metamodel wth your own style or object. For th
 5. run `finetune_script.py`
 6. you will get back an identifier, which can be used to create images of that object/style
 
-## Generate Images
+## Generate Images (Step-by-step)
 
 You can either use your own models or the metamodel to generate images. For that:
 
 1. choose the identifier of the object/style you want to create
-2. specify prompt (note: also use class name of the object/style)
+2. specify prompt with the identifier of the object/style you want to create 
+   - note: class name not needed as it's automatically fetched
 3. specify the right host, depending on whether you are in the Berlin office or not
 4. specify whether you want to use your own model or use the metamodel
    - the own model will be identified by the identifier you got back from the finetuning and it has been solely trained to fit your style/object

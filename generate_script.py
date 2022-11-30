@@ -4,17 +4,32 @@ from pathlib import Path
 from jina import Client, Document
 import hubble
 
-identifier = 'sks'
-prompt = f'a picasso painting of a {identifier} [class_name]'
+object_style_identifier = 'sks'
+prompt = f'a {object_style_identifier}'
+
 
 # use the first host if accessing from outside Berlin office, else use the second one
-host = 'grpc://87.191.159.105:51111'
+# host = 'grpc://87.191.159.105:51111'
 host = 'grpc://192.168.178.31:51111'
 
 target_model = 'own'  # 'own' for using own model, 'meta' for using metamodel
 
 
 client = Client(host=host)
+
+# update prompt with class name
+identifier_n_classes = client.post(
+    on='/list_identifiers_n_classes',
+    parameters={
+        'jwt': {
+            'token': hubble.get_token(),
+        },
+    }
+)
+prompt = prompt.replace(
+    object_style_identifier,
+    f"{object_style_identifier} {identifier_n_classes[0].tags[target_model][object_style_identifier]}"
+)
 
 image_docs = client.post(
     on='/generate',
@@ -23,7 +38,7 @@ image_docs = client.post(
         'jwt': {
             'token': hubble.get_token(),
         },
-        'identifier': identifier,
+        'identifier': object_style_identifier,
         'target_model': target_model,
     }
 )
