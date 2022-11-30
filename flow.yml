@@ -9,7 +9,7 @@ jcloud:
     project: big-creative-ai
 executors:
   - name: dreambooth
-    uses: jinahub+docker://2h1j2v7o/v0.0.1-test-5-gpu
+    uses: jinahub+docker://2h1j2v7o/v0.0.2-gpu
     uses_with:
       hf_token: ${{ ENV.HF_TOKEN }}
       device: cuda:0
