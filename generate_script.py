@@ -7,8 +7,12 @@ import hubble
 prompt = 'a picasso painting of a sks [class_name]'
 identifier = 'sks'
 
+# use the first host if accessing from outside Berlin office, else use the second one
+host = 'grpc://87.191.159.105:51111'
+host = 'grpc://192.168.178.31:51111'
 
-client = Client(host='')
+
+client = Client(host=host)
 
 image_docs = client.post(
     on='/generate',
