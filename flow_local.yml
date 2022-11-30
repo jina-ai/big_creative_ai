@@ -1,6 +1,7 @@
 jtype: Flow
 with:
 #  monitoring: true
+  timeout_send: 600000
   env:
     JINA_LOG_LEVEL: DEBUG
 jcloud:
@@ -18,6 +19,4 @@ executors:
       JINA_LOG_LEVEL: DEBUG
       CUDA_VISIBLE_DEVICES: 2
     timeout_ready: -1
-#    jcloud:
-#      resources:
-#        gpu: '1'
+    gpus: all

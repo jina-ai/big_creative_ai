@@ -1,0 +1,23 @@
+jtype: Flow
+with:
+#  monitoring: true
+  timeout_send: 600000
+  env:
+    JINA_LOG_LEVEL: DEBUG
+jcloud:
+  version: '3.12.0'
+  labels:
+    project: big-creative-ai
+executors:
+  - name: dreambooth
+    uses: jinahub+docker://2h1j2v7o/v0.0.2-gpu
+    uses_with:
+      hf_token: ${{ ENV.HF_TOKEN }}
+      device: cuda:0
+      admin_emails: ${{ ENV.ADMIN_EMAILS }}
+    env:
+      JINA_LOG_LEVEL: DEBUG
+    timeout_ready: -1
+#    jcloud:
+#      resources:
+#        gpu: '1'
