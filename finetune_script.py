@@ -7,6 +7,7 @@ class_name = 'dog'
 
 for doc in docs:
     doc.load_uri_to_blob()
+    doc.blob = None
 
 client = Client(host='')
 

@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import subprocess
 import sys
@@ -17,37 +18,38 @@ import torch
 from .auth import NOWAuthExecutor as Executor, secure_request, SecurityLevel, _get_user_info
 
 
-PRE_TRAINDED_MODEL_DIR = 'stable-diffusion-v1-4'
-METAMODEL_ID = 'meta'
-METAMODEL_DIR = 'metamodel'
 
-RARE_IDENTIFIERS = [
-    'sks',
-    'lnl',
-    'brc',
-    'mkd',
-    'rvt',
-    'pyr',
-    'sph',
-    'cyl',
-    'cnc',
-    'dkd',
-    'dmd',
-    'dld',
-    'dvu',
-    'dwd',
-    'dxd',
-    'dyd',
-    'dzd',
-    'scs',
-    'qtq',
-    'qrq',
-    'xjy',
-]
 
 
 class BIGDreamBoothExecutor(Executor):
     """BIGDreamBoothExecutor trains Stable Diffusion"""
+
+    PRE_TRAINDED_MODEL_DIR = 'stable-diffusion-v1-4'
+    METAMODEL_ID = 'meta'
+    METAMODEL_DIR = 'metamodel'
+    RARE_IDENTIFIERS = [
+        'sks',
+        'lnl',
+        'brc',
+        'mkd',
+        'rvt',
+        'pyr',
+        'sph',
+        'cyl',
+        'cnc',
+        'dkd',
+        'dmd',
+        'dld',
+        'dvu',
+        'dwd',
+        'dxd',
+        'dyd',
+        'dzd',
+        'scs',
+        'qtq',
+        'qrq',
+        'xjy',
+    ]
 
     def __init__(
             self,
@@ -68,11 +70,15 @@ class BIGDreamBoothExecutor(Executor):
             if self.workspace
             else None
         )
-        if self.models_dir:
-            os.makedirs(self.models_dir, exist_ok=True)
-            download_pretrained_stable_diffusion_model(self.models_dir)
+        os.makedirs(self.models_dir, exist_ok=True)
+        download_pretrained_stable_diffusion_model(self.models_dir)
 
         self.user_to_identifiers_and_class_names: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
+        self.user_to_identifiers_and_class_names_path = os.path.join(
+            self.models_dir, 'user_to_identifiers_and_class_names.json'
+        )
+        with open(self.user_to_identifiers_and_class_names_path, 'r') as fp:
+            self.user_to_identifiers_and_class_names = json.load(fp)
 
         write_basic_config(mixed_precision='no')
 
@@ -83,8 +89,8 @@ class BIGDreamBoothExecutor(Executor):
         :param identifier: The identifier used to train the model given object
         :return: The path to the model directory
         """
-        if user_id == METAMODEL_ID:
-            return os.path.join(self.models_dir, METAMODEL_DIR)
+        if user_id == self.METAMODEL_ID:
+            return os.path.join(self.models_dir, self.METAMODEL_DIR)
         return os.path.join(self.models_dir, user_id, identifier)
 
     @staticmethod
@@ -96,21 +102,30 @@ class BIGDreamBoothExecutor(Executor):
         target_model = parameters.get('target_model', 'own')
         if target_model == 'own':
             user_id = _get_user_info(parameters['jwt']['token'])['_id']
-        elif target_model == METAMODEL_ID:
-            user_id = METAMODEL_ID
+        elif target_model == BIGDreamBoothExecutor.METAMODEL_ID:
+            user_id = BIGDreamBoothExecutor.METAMODEL_ID
         else:
-            raise ValueError(f'Unknown target model {target_model}; must be either "own" or "{METAMODEL_ID}"')
+            raise ValueError(f'Unknown target model {target_model}; must be either "own" or '
+                             f'"{BIGDreamBoothExecutor.METAMODEL_ID}"')
         return user_id
+
+    @secure_request(SecurityLevel.ADMIN, on='/update_rare_identifiers')
+    def update_rare_identifiers(self, parameters: Dict = None, **kwargs):
+        """Updates the list of rare identifiers."""
+        self.logger.info(f'Updating rare identifiers to {parameters["rare_identifiers"]}')
+        self.RARE_IDENTIFIERS = parameters['rare_identifiers']
 
     @secure_request(SecurityLevel.USER, on='/list_identifiers_n_classes')
     def get_identifiers_n_classes(self, parameters, **kwargs):
         """Returns the identifiers & their classes of the models which were trained for the user and the metamodel."""
         user_id = _get_user_info(parameters['jwt']['token'])['_id']
-        return Document(
-            tags={
-                'own': self.user_to_identifiers_and_class_names.get(user_id, {}),
-                METAMODEL_ID: self.user_to_identifiers_and_class_names.get(METAMODEL_ID)
-            }
+        return DocumentArray(
+            Document(
+                tags={
+                    'own': self.user_to_identifiers_and_class_names.get(user_id, {}),
+                    self.METAMODEL_ID: self.user_to_identifiers_and_class_names.get(self.METAMODEL_ID)
+                }
+            )
         )
 
     @secure_request(level=SecurityLevel.USER, on='/finetune')
@@ -137,8 +152,8 @@ class BIGDreamBoothExecutor(Executor):
 
         # save finetuned model into user_id/identifier folder if user_id is not metamodel, else save into METAMODEL_DIR
         output_dir = self._get_model_dir(user_id, identifier)
-        pretrained_model_dir = output_dir if user_id == METAMODEL_ID \
-            else os.path.join(self.models_dir, PRE_TRAINDED_MODEL_DIR)
+        pretrained_model_dir = output_dir if user_id == self.METAMODEL_ID \
+            else os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
 
         # create temporary folder for instance data
         with tempfile.TemporaryDirectory() as instance_data_dir:
@@ -148,15 +163,16 @@ class BIGDreamBoothExecutor(Executor):
                     raise ValueError(f'Only images are allowed but doc {doc.id} has mime_type {doc.mime_type} '
                                      f'and modality {doc.modality}')
 
-                if doc.uri:
-                    doc.load_uri_to_image_tensor(timeout=10)
-                elif doc.blob:
+                if doc.blob:
                     doc.convert_blob_to_image_tensor()
+                elif doc.uri:
+                    doc.load_uri_to_image_tensor(timeout=10)
                 doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'), image_format='png')
 
             # execute dreambooth.py
             cur_dir = os.path.abspath(os.path.join(__file__, '..'))
-            _, err = cmd(
+            # note this the output and error are switched for accelerate launch dreambooth.py
+            err, _ = cmd(
                 [
                     'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
                     "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
@@ -168,17 +184,20 @@ class BIGDreamBoothExecutor(Executor):
                     "--max_train_steps", "200", "--train_batch_size", "1",
                     "--gradient_accumulation_steps", "1"
                  ]
-
             )
             if err:
-                print("Error while executing dreambooth.py:", file=sys.stderr)
                 error_message = err.decode('utf-8').split('ERROR')[-1]
+                error_message_print = "----------\nError while executing dreambooth.py:"
                 for line in error_message.splitlines():
-                    print(line, file=sys.stderr)
-                raise RuntimeError(f'DreamBooth failed')
+                    error_message_print += '\n' + line
+                error_message_print += '\n----------'
+                print(error_message_print, file=sys.stderr)
+                raise RuntimeError(f'DreamBooth failed: {error_message}')
 
         self.user_to_identifiers_and_class_names[user_id][identifier] = class_name
-        return identifier
+        with open(self.user_to_identifiers_and_class_names_path, 'w') as f:
+            json.dump(self.user_to_identifiers_and_class_names, f)
+        return DocumentArray(Document(text=identifier))
 
     @secure_request(level=SecurityLevel.USER, on='/generate')
     def generate(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
@@ -198,7 +217,7 @@ class BIGDreamBoothExecutor(Executor):
             raise ValueError('No prompt provided')
 
         user_id = self._get_user_id(parameters)
-        if user_id != METAMODEL_ID:
+        if user_id != self.METAMODEL_ID:
             identifier = parameters.get('identifier', '')
             if not identifier or identifier not in list(self.user_to_identifiers_and_class_names[user_id].keys()):
                 raise ValueError(f'No identifier provided in parameters or identifier not used for finetuning\n'
@@ -217,22 +236,24 @@ class BIGDreamBoothExecutor(Executor):
         with io.BytesIO() as buffer:
             image.save(buffer, format='png')
             doc = Document(blob=buffer.getvalue())
-        return doc
+        return DocumentArray(doc)
 
     @staticmethod
     def _get_next_identifier(used_identifiers: List[str]) -> str:
         """Returns the next identifier that is not yet used."""
-        for identifier in RARE_IDENTIFIERS:
+        for identifier in BIGDreamBoothExecutor.RARE_IDENTIFIERS:
             if identifier not in used_identifiers:
                 return identifier
-        raise RuntimeError('No identifier left for this user')
+        raise RuntimeError('No identifier left for this user. Please, inform the administrator.')
 
 
 def download_pretrained_stable_diffusion_model(model_dir: str, sd_version: str = 'stable-diffusion-v1-4'):
     """Downloads pretrained stable diffusion model."""
-    if not all(os.path.exists(os.path.join(model_dir, dir)) for dir in [PRE_TRAINDED_MODEL_DIR, METAMODEL_DIR]):
+    if not all(os.path.exists(os.path.join(model_dir, dir)) for dir in [
+        BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR
+    ]):
         pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True)
-        for dir in [PRE_TRAINDED_MODEL_DIR, METAMODEL_DIR]:
+        for dir in [BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR]:
             pipe.save_pretrained(os.path.join(model_dir, dir))
 
 

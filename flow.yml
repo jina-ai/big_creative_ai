@@ -12,6 +12,7 @@ executors:
     uses: jinahub+docker://2h1j2v7o/v0.0.1-test-5-gpu
     uses_with:
       hf_token: ${{ ENV.HF_TOKEN }}
+      admin_emails: ${{ ENV.ADMIN_EMAILS }}
     env:
       JINA_LOG_LEVEL: DEBUG
     timeout_ready: -1
