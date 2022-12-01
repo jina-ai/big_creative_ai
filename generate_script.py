@@ -30,20 +30,22 @@ identifier_n_categories = identifier_n_categories[0].tags[target_model]
 for _identifier, _category in identifier_n_categories.items():
     prompt = prompt.replace(_identifier, f"{_identifier} {_category}")
 
-image_docs = client.post(
-    on='/generate',
-    inputs=Document(text=prompt),
-    parameters={
-        'jwt': {
-            'token': hubble.get_token(),
-        },
-        'identifier': object_style_identifier,
-        'target_model': target_model,
-    }
-)
+# generate 10 images
+folder_images = Path(f"generated_images/{prompt.replace(' ', '-').replace(',', '')}-{time.time()}")
+folder_images.mkdir(exist_ok=True)
+for i in range(10):
+    image_docs = client.post(
+        on='/generate',
+        inputs=Document(text=prompt),
+        parameters={
+            'jwt': {
+                'token': hubble.get_token(),
+            },
+            'identifier': object_style_identifier,
+            'target_model': target_model,
+        }
+    )
+    image_docs[0].save_blob_to_file(f"{str(folder_images)}/generation-{i}.png")
 
-print(f"Generation was successful. ")
+print(f"Generations were successful and were saved to {folder_images}")
 
-path = Path(f"generated_images")
-path.mkdir(exist_ok=True)
-image_docs[0].save_blob_to_file(f"{str(path)}/{prompt.replace(' ', '-').replace(',', '')}-{time.time()}.png")
