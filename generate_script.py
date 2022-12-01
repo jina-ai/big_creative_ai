@@ -32,7 +32,7 @@ for _identifier, _category in identifier_n_categories.items():
 
 # generate 10 images
 folder_images = Path(f"generated_images/{prompt.replace(' ', '-').replace(',', '')}-{time.time()}")
-folder_images.mkdir(exist_ok=True)
+folder_images.mkdir(exist_ok=True, parents=True)
 for i in range(10):
     image_docs = client.post(
         on='/generate',
