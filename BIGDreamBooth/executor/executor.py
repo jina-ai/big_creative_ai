@@ -51,6 +51,10 @@ class BIGDreamBoothExecutor(Executor):
         'xjy',
     ]
 
+    DEFAULT_LEARNING_RATE = 5e-6
+    DEFAULT_MAX_TRAIN_STEPS = 200
+    MAX_MAX_TRAIN_STEPS = 1500
+
     def __init__(
             self,
             hf_token: str,
@@ -146,12 +150,19 @@ class BIGDreamBoothExecutor(Executor):
         if len(docs) not in [3, 4, 5]:
             raise ValueError(f'Expected 3, 4 or 5 documents but got {len(docs)}')
         if 'category' not in parameters:
-            raise ValueError('No category for the images provided')
+            raise ValueError('No category for the images provided in parameters')
+
         category = parameters['category']
-
         user_id = self._get_user_id(parameters)
-
         identifier = self._get_next_identifier(list(self.user_to_identifiers_and_categories[user_id].keys()))
+        self.logger.info(f'Finetuning model for {user_id} model with identifier {identifier} and category {category}')
+
+        learning_rate = parameters.get('learning_rate', self.DEFAULT_LEARNING_RATE)
+        max_train_steps = int(parameters.get('max_train_steps', self.DEFAULT_MAX_TRAIN_STEPS))
+        if max_train_steps < 0 or max_train_steps > self.MAX_MAX_TRAIN_STEPS:
+            raise ValueError(f'Expected max_train_steps to be in [0, {self.MAX_MAX_TRAIN_STEPS}] but got {max_train_steps}')
+        self.logger.info(f'Using learning rate {learning_rate} and max training steps {max_train_steps}')
+
         instance_prompt = f"a {identifier} {category}"
 
         # save finetuned model into user_id/identifier folder if user_id is not metamodel, else save into METAMODEL_DIR
@@ -185,8 +196,8 @@ class BIGDreamBoothExecutor(Executor):
                     "--instance_data_dir", f"{instance_data_dir}",
                     "--instance_prompt", f"{instance_prompt}",
                     "--resolution", "512",
-                    "--learning_rate", "5e-6", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
-                    "--max_train_steps", "200", "--train_batch_size", "1",
+                    "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
+                    "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "1",
                     "--gradient_accumulation_steps", "1"
                  ]
             )
@@ -207,6 +218,7 @@ class BIGDreamBoothExecutor(Executor):
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
             json.dump(self.user_to_identifiers_and_categories, f)
+
         return DocumentArray(Document(text=identifier))
 
     @secure_request(level=SecurityLevel.USER, on='/generate')
