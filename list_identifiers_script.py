@@ -1,4 +1,4 @@
-from jina import Client, Document
+from jina import Client
 import hubble
 
 # use the first host if accessing from outside Berlin office, else use the second one

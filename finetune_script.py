@@ -1,14 +1,17 @@
 from jina import Client, DocumentArray
 import hubble
 
+# specify the path to the images
 path_to_images = '/some/path/to/images'
+# specify the category of the images
 category = 'dog|painting|ping pong table|...'
 
 # use the first host if accessing from outside Berlin office, else use the second one
-host = 'grpc://87.191.159.105:51111'
+# host = 'grpc://87.191.159.105:51111'
 host = 'grpc://192.168.178.31:51111'
 
-target_model = 'own'  # 'own' for training from pretrained model, 'meta' for training metamodel
+# 'own' for training from pretrained model, 'meta' for training metamodel
+target_model = 'own'
 
 
 docs = DocumentArray.from_files(f'{path_to_images}/**')
