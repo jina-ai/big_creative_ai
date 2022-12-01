@@ -8,8 +8,8 @@ host = 'grpc://192.168.178.31:51111'
 
 client = Client(host=host)
 
-identifier_n_classes = client.post(
-    on='/list_identifiers_n_classes',
+identifier_n_categories = client.post(
+    on='/list_identifiers_n_categories',
     parameters={
         'jwt': {
             'token': hubble.get_token(),
@@ -17,4 +17,4 @@ identifier_n_classes = client.post(
     }
 )
 
-print(f"Used identifiers & classes: {identifier_n_classes[0].tags}")
+print(f"Used identifiers & their categories: {identifier_n_categories[0].tags}")

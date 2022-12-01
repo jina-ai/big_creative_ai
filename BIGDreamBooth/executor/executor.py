@@ -73,16 +73,16 @@ class BIGDreamBoothExecutor(Executor):
         os.makedirs(self.models_dir, exist_ok=True)
         download_pretrained_stable_diffusion_model(self.models_dir)
 
-        self.user_to_identifiers_and_class_names: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
-        self.user_to_identifiers_and_class_names_path = os.path.join(
-            self.models_dir, 'user_to_identifiers_and_class_names.json'
+        self.user_to_identifiers_and_categories: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
+        self.user_to_identifiers_and_categories_path = os.path.join(
+            self.models_dir, 'user_to_identifiers_and_categories.json'
         )
-        if os.path.exists(self.user_to_identifiers_and_class_names_path):
-            with open(self.user_to_identifiers_and_class_names_path, 'r') as fp:
+        if os.path.exists(self.user_to_identifiers_and_categories_path):
+            with open(self.user_to_identifiers_and_categories_path, 'r') as fp:
                 tmp_dict = json.load(fp)
                 # update the dict
-                for user_id, identifiers_and_class_names in tmp_dict.items():
-                    self.user_to_identifiers_and_class_names[user_id].update(identifiers_and_class_names)
+                for user_id, identifiers_and_categories in tmp_dict.items():
+                    self.user_to_identifiers_and_categories[user_id].update(identifiers_and_categories)
 
         write_basic_config(mixed_precision='no')
 
@@ -119,15 +119,15 @@ class BIGDreamBoothExecutor(Executor):
         self.logger.info(f'Updating rare identifiers to {parameters["rare_identifiers"]}')
         self.RARE_IDENTIFIERS = parameters['rare_identifiers']
 
-    @secure_request(SecurityLevel.USER, on='/list_identifiers_n_classes')
-    def get_identifiers_n_classes(self, parameters, **kwargs):
-        """Returns the identifiers & their classes of the models which were trained for the user and the metamodel."""
+    @secure_request(SecurityLevel.USER, on='/list_identifiers_n_categories')
+    def list_identifiers_n_categories(self, parameters, **kwargs):
+        """Returns the identifiers & their categories of the models which were trained for the user and the metamodel."""
         user_id = _get_user_info(parameters['jwt']['token'])['_id']
         return DocumentArray(
             Document(
                 tags={
-                    'own': self.user_to_identifiers_and_class_names.get(user_id, {}),
-                    self.METAMODEL_ID: self.user_to_identifiers_and_class_names.get(self.METAMODEL_ID)
+                    'own': self.user_to_identifiers_and_categories.get(user_id, {}),
+                    self.METAMODEL_ID: self.user_to_identifiers_and_categories.get(self.METAMODEL_ID)
                 }
             )
         )
@@ -140,19 +140,19 @@ class BIGDreamBoothExecutor(Executor):
         :param docs: The images of the object to finetune the model with. Only 3-5 images are accepted.
         :param parameters: The parameters for the finetuning; must contain the key 'target_model' which can be either
             'own' or METAMODEL_ID, where 'own' will finetune the model of the user who sent the request and METAMODEL_ID
-            will finetune the metamodel; must contain the key 'class_name' which is the class of the object
+            will finetune the metamodel; must contain the key 'category' which is the category of the object/style
         :return: The identifier used for the finetuning, which can be used to generate images of the object
         """
         if len(docs) not in [3, 4, 5]:
             raise ValueError(f'Expected 3, 4 or 5 documents but got {len(docs)}')
-        if 'class_name' not in parameters:
-            raise ValueError('No class for the images provided')
-        class_name = parameters['class_name']
+        if 'category' not in parameters:
+            raise ValueError('No category for the images provided')
+        category = parameters['category']
 
         user_id = self._get_user_id(parameters)
 
-        identifier = self._get_next_identifier(list(self.user_to_identifiers_and_class_names[user_id].keys()))
-        instance_prompt = f"a {identifier} {class_name}"
+        identifier = self._get_next_identifier(list(self.user_to_identifiers_and_categories[user_id].keys()))
+        instance_prompt = f"a {identifier} {category}"
 
         # save finetuned model into user_id/identifier folder if user_id is not metamodel, else save into METAMODEL_DIR
         output_dir = self._get_model_dir(user_id, identifier)
@@ -177,7 +177,7 @@ class BIGDreamBoothExecutor(Executor):
             # execute dreambooth.py
             cur_dir = os.path.abspath(os.path.join(__file__, '..'))
             # note this the output and error are switched for accelerate launch dreambooth.py
-            err, _ = cmd(
+            output, err = cmd(
                 [
                     'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
                     "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
@@ -190,18 +190,23 @@ class BIGDreamBoothExecutor(Executor):
                     "--gradient_accumulation_steps", "1"
                  ]
             )
-            if err:
-                error_message = err.decode('utf-8').split('ERROR')[-1]
-                error_message_print = "----------\nError while executing dreambooth.py:"
-                for line in error_message.splitlines():
-                    error_message_print += '\n' + line
-                error_message_print += '\n----------'
-                print(error_message_print, file=sys.stderr)
-                raise RuntimeError(f'DreamBooth failed: {error_message}')
+            for cmd_ret, cmd_ret_str in zip([output, err], ['output', 'error']):
+                if cmd_ret:
+                    error_message = err.decode('utf-8')#.split('ERROR')[-1]
+                    # error_message = err.decode('utf-8').split('ERROR')[-1]
+                    error_message_print = f"----------\n{cmd_ret_str} message from dreambooth.py [Might not actually fail:"
+                    for line in error_message.splitlines():
+                        error_message_print += '\n' + line
+                    error_message_print += '\n----------'
+                    print(error_message_print, file=sys.stderr)
 
-        self.user_to_identifiers_and_class_names[user_id][identifier] = class_name
-        with open(self.user_to_identifiers_and_class_names_path, 'w') as f:
-            json.dump(self.user_to_identifiers_and_class_names, f)
+            # if output:
+            #     output_message = output.decode('utf-8')
+                # raise RuntimeError(f'DreamBooth failed: {error_message}')
+
+        self.user_to_identifiers_and_categories[user_id][identifier] = category
+        with open(self.user_to_identifiers_and_categories_path, 'w') as f:
+            json.dump(self.user_to_identifiers_and_categories, f)
         return DocumentArray(Document(text=identifier))
 
     @secure_request(level=SecurityLevel.USER, on='/generate')
@@ -224,10 +229,10 @@ class BIGDreamBoothExecutor(Executor):
         user_id = self._get_user_id(parameters)
         if user_id != self.METAMODEL_ID:
             identifier = parameters.get('identifier', '')
-            if not identifier or identifier not in list(self.user_to_identifiers_and_class_names[user_id].keys()):
+            if not identifier or identifier not in list(self.user_to_identifiers_and_categories[user_id].keys()):
                 raise ValueError(f'No identifier provided in parameters or identifier not used for finetuning\n'
                                  f'(identifier: "{identifier}", '
-                                 f'used identifiers: {list(self.user_to_identifiers_and_class_names[user_id].keys())})')
+                                 f'used identifiers: {list(self.user_to_identifiers_and_categories[user_id].keys())})')
         else:
             identifier = None
 

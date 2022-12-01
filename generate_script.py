@@ -17,19 +17,18 @@ target_model = 'own'  # 'own' for using own model, 'meta' for using metamodel
 
 client = Client(host=host)
 
-# update prompt with class name
-identifier_n_classes = client.post(
-    on='/list_identifiers_n_classes',
+# update prompt with category of used identifiers
+identifier_n_categories = client.post(
+    on='/list_identifiers_n_categories',
     parameters={
         'jwt': {
             'token': hubble.get_token(),
         },
     }
 )
-prompt = prompt.replace(
-    object_style_identifier,
-    f"{object_style_identifier} {identifier_n_classes[0].tags[target_model][object_style_identifier]}"
-)
+identifier_n_categories = identifier_n_categories[0].tags[target_model]
+for _identifier, _category in identifier_n_categories.items():
+    prompt = prompt.replace(_identifier, f"{_identifier} {_category}")
 
 image_docs = client.post(
     on='/generate',

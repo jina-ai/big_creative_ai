@@ -2,7 +2,7 @@ from jina import Client, DocumentArray
 import hubble
 
 path_to_images = '/some/path/to/images'
-class_name = '[class_name]'
+category = 'dog|painting|ping pong table|...'
 
 # use the first host if accessing from outside Berlin office, else use the second one
 host = 'grpc://87.191.159.105:51111'
@@ -25,7 +25,7 @@ identifier_doc = client.post(
         'jwt': {
             'token': hubble.get_token(),
         },
-        'class_name': class_name,
+        'category': category,
         'target_model': target_model
     },
 )
