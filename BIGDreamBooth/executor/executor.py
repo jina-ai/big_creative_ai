@@ -46,6 +46,14 @@ class BIGDreamBoothExecutor(Executor):
         'qtq',
         'qrq',
         'xjy',
+        'xky',
+        'xly',
+        'xmy',
+        'xny',
+        'wkw',
+        'vkv',
+        'mpm',
+        'mnm',
     ]
 
     DEFAULT_LEARNING_RATE = 5e-6
@@ -194,7 +202,7 @@ class BIGDreamBoothExecutor(Executor):
                     "--resolution", "512",
                     "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
                     "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "1",
-                    "--gradient_accumulation_steps", "1"
+                    "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
                 ]
             )
             for cmd_ret, cmd_ret_str in zip([output, err], ['output', 'error']):

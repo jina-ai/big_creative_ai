@@ -31,7 +31,14 @@ for _identifier, _category in identifier_n_categories.items():
     prompt = prompt.replace(_identifier, f"{_identifier} {_category}")
 
 # generate 10 images
-folder_images = Path(f"generated_images/{prompt.replace(' ', '-').replace(',', '')}")
+folder_images_prefix = 'generated_images'
+if target_model == 'own':
+    folder_images_prefix += f'/{_identifier}'
+elif target_model == 'meta':
+    folder_images_prefix += f'/metamodel'
+else:
+    raise ValueError(f"Unknown target_model '{target_model}'")
+folder_images = Path(f"{folder_images_prefix}/{prompt.replace(' ', '-').replace(',', '')}")
 folder_images = Path(f"{str(folder_images)[:200]}-{time.time()}")
 folder_images.mkdir(exist_ok=True, parents=True)
 for i in range(10):
