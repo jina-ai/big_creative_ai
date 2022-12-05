@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import os
@@ -7,6 +8,7 @@ import tempfile
 from collections import defaultdict
 from typing import List, Dict
 
+from accelerate import Accelerator
 from accelerate.utils import write_basic_config
 from diffusers import StableDiffusionPipeline
 from docarray import Document
@@ -14,8 +16,10 @@ from huggingface_hub import login as hf_login
 from jina import DocumentArray
 import PIL
 import torch
+from tqdm import tqdm
 
 from .auth import NOWAuthExecutor as Executor, secure_request, SecurityLevel, _get_user_info
+from .dreambooth import PromptDataset
 
 
 class BIGDreamBoothExecutor(Executor):
@@ -63,16 +67,12 @@ class BIGDreamBoothExecutor(Executor):
     def __init__(
             self,
             hf_token: str,
-            device: str = 'cuda',
             *args,
             **kwargs
     ):
         super().__init__(*args, **kwargs)
 
         hf_login(token=hf_token)
-
-        # determine if gpu is available
-        self.device = device
 
         self.models_dir = (
             os.path.join(self.workspace, 'models')
@@ -161,6 +161,7 @@ class BIGDreamBoothExecutor(Executor):
                          f'{num_category_images} images for category {category}')
 
         instance_prompt = f"a {identifier} {category}"
+        class_prompt = f"a {category}"
 
         # save finetuned model into user_id/identifier folder if user_id is not metamodel, else save into METAMODEL_DIR
         output_dir = f"{str(self._get_model_dir(user_id, identifier))}-experimental"
@@ -172,9 +173,6 @@ class BIGDreamBoothExecutor(Executor):
             # create sub folder for instance data
             instance_data_dir = os.path.join(tmp_dir, 'instance_data')
             os.makedirs(instance_data_dir, exist_ok=True)
-            # create sub folder for class data
-            class_data_dir = os.path.join(tmp_dir, 'class_data')
-            os.makedirs(class_data_dir, exist_ok=True)
             # save documents as pngs
             for doc in docs:
                 if not doc.mime_type.startswith('image') and not doc.modality == 'image':
@@ -186,6 +184,17 @@ class BIGDreamBoothExecutor(Executor):
                 elif doc.uri:
                     doc.load_uri_to_image_tensor(timeout=10)
                 doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'), image_format='png')
+            # class data
+            class_data_dir = os.path.join(tmp_dir, 'class_data')
+            os.makedirs(class_data_dir, exist_ok=True)
+            class_images = self._generate(
+                num_images=num_category_images,
+                prompt=class_prompt,
+                model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+            )
+            for doc in class_images:
+                doc.convert_blob_to_image_tensor()
+                doc.save_image_tensor_to_file(file=os.path.join(class_data_dir, f'{doc.id}.png'), image_format='png')
 
             torch.cuda.empty_cache()
             # execute dreambooth.py
@@ -197,30 +206,25 @@ class BIGDreamBoothExecutor(Executor):
                     "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
                     "--output_dir", f"{output_dir}",
                     "--instance_data_dir", f"{instance_data_dir}", "--instance_prompt", f"{instance_prompt}",
-                    "--class_data_dir", f"{class_data_dir}", "--class_prompt", f"a {category}",
+                    "--class_data_dir", f"{class_data_dir}", "--class_prompt", f"{class_prompt}",
                     '--with_prior_preservation',
                     "--resolution", "512",
                     "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
                     "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "1",
-                    "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
+                    "--gradient_accumulation_steps", "1",
                 ]
             )
-            for cmd_ret, cmd_ret_str in zip([output, err], ['output', 'error']):
+            for cmd_ret in [output, err]:
                 if cmd_ret:
-                    error_message = err.decode('utf-8')  # .split('ERROR')[-1]
+                    error_message = cmd_ret .decode('utf-8')
                     if 'error' in error_message.lower():
-                        raise RuntimeError(f'Error in {cmd_ret_str} of dreambooth.py: {error_message}')
-
-                    # error_message = err.decode('utf-8').split('ERROR')[-1]
-                    # error_message_print = f"----------\n{cmd_ret_str} message from dreambooth.py [Might not actually fail:"
-                    # for line in error_message.splitlines():
-                    #     error_message_print += '\n' + line
-                    # error_message_print += '\n----------'
-                    # print(error_message_print, file=sys.stderr)
-
-            # if output:
-            #     output_message = output.decode('utf-8')
-            # raise RuntimeError(f'DreamBooth failed: {error_message}')
+                        error_message_print = f"----------\nOutput:"
+                        for line in error_message.splitlines():
+                            error_message_print += '\n' + line
+                        error_message_print += '\n----------'
+                        print(error_message_print, file=sys.stderr)
+                        raise RuntimeError(f'Error while executing dreambooth.py:'
+                                           f"{err.decode('utf-8').split('ERROR')[-1]}")
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
@@ -291,22 +295,17 @@ class BIGDreamBoothExecutor(Executor):
                     "--gradient_accumulation_steps", "1"
                  ]
             )
-            for cmd_ret, cmd_ret_str in zip([output, err], ['output', 'error']):
+            for cmd_ret in [output, err]:
                 if cmd_ret:
-                    error_message = err.decode('utf-8')#.split('ERROR')[-1]
+                    error_message = cmd_ret .decode('utf-8')
                     if 'error' in error_message.lower():
-                        raise RuntimeError(f'Error in {cmd_ret_str} of dreambooth.py: {error_message}')
-
-            #         # error_message = err.decode('utf-8').split('ERROR')[-1]
-            #         error_message_print = f"----------\n{cmd_ret_str} message from dreambooth.py [Might not actually fail:"
-            #         for line in error_message.splitlines():
-            #             error_message_print += '\n' + line
-            #         error_message_print += '\n----------'
-            #         print(error_message_print, file=sys.stderr)
-            #
-            # # if output:
-            # #     output_message = output.decode('utf-8')
-            #     # raise RuntimeError(f'DreamBooth failed: {error_message}')
+                        error_message_print = f"----------\nOutput:"
+                        for line in error_message.splitlines():
+                            error_message_print += '\n' + line
+                        error_message_print += '\n----------'
+                        print(error_message_print, file=sys.stderr)
+                        raise RuntimeError(f'Error while executing dreambooth.py:'
+                                           f"{err.decode('utf-8').split('ERROR')[-1]}")
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
@@ -345,20 +344,45 @@ class BIGDreamBoothExecutor(Executor):
         if 'experimental' in parameters.keys():
             model_path = str(model_path) + '-experimental'
 
-        doc = self._generate(model_path=model_path, prompt=prompt)
-        torch.cuda.empty_cache()
+        image_docs = self._generate(num_images=1, model_path=model_path, prompt=prompt)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-        return DocumentArray(doc)
+        return image_docs
 
-    def _generate(self, model_path: str, prompt: str) -> Document:
-        pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16).to(self.device)
-        pipe.safety_checker = None
-        image: PIL.Image.Image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
-        # save pil image to blob
-        with io.BytesIO() as buffer:
-            image.save(buffer, format='png')
-            doc = Document(blob=buffer.getvalue())
-        return doc
+    def _generate(self, num_images: int, model_path: str, prompt: str) -> DocumentArray:
+        accelerator = Accelerator()
+
+        torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            model_path,
+            torch_dtype=torch_dtype,
+            safety_checker=None,
+        )
+        pipeline.safetyer_checker = None
+        pipeline.set_progress_bar_config(disable=True)
+
+        sample_dataset = PromptDataset(prompt, num_images)
+        sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=4)
+
+        sample_dataloader = accelerator.prepare(sample_dataloader)
+        pipeline.to(accelerator.device)
+
+        docs = DocumentArray()
+        for example in tqdm(
+            sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+        ):
+            images = pipeline(example["prompt"]).images
+            for image in images:
+                with io.BytesIO() as buffer:
+                    image.save(buffer, format='png')
+                    docs.append(Document(blob=buffer.getvalue()))
+
+        del pipeline
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        return docs
 
     @staticmethod
     def _get_next_identifier(used_identifiers: List[str]) -> str:

@@ -6,6 +6,8 @@ ARG JINA_VERSION=3.12.0
 
 FROM pytorch/pytorch:${TORCH_PACKAGE_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime
 
+# fixing NameError: name 'str2optimizer8bit_blockwise' is not defined: https://github.com/TimDettmers/bitsandbytes/issues/62
+ENV LD_LIBRARY_PATH=/usr/lib/wsl/lib/
 RUN apt-get update && apt-get install --no-install-recommends -y gcc libc6-dev git
 
 RUN python3 -m pip install --no-cache-dir jina${JINA_VERSION:+==${JINA_VERSION}}
