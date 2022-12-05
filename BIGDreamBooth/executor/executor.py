@@ -18,9 +18,6 @@ import torch
 from .auth import NOWAuthExecutor as Executor, secure_request, SecurityLevel, _get_user_info
 
 
-
-
-
 class BIGDreamBoothExecutor(Executor):
     """BIGDreamBoothExecutor trains Stable Diffusion"""
 
@@ -135,6 +132,10 @@ class BIGDreamBoothExecutor(Executor):
                 }
             )
         )
+
+    @secure_request(SecurityLevel.USER, on='/experimental/finetune')
+    def experimental_finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
+        pass
 
     @secure_request(level=SecurityLevel.USER, on='/finetune')
     def finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
