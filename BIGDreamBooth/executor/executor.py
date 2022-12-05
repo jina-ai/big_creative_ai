@@ -135,7 +135,87 @@ class BIGDreamBoothExecutor(Executor):
 
     @secure_request(SecurityLevel.USER, on='/experimental/finetune')
     def experimental_finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
-        pass
+        if 'category' not in parameters:
+            raise ValueError('No category for the images provided in parameters')
+
+        category = parameters['category']
+        user_id = self._get_user_id(parameters)
+        identifier = self._get_next_identifier(list(self.user_to_identifiers_and_categories[user_id].keys()))
+        self.logger.info(f'Finetuning model for {user_id} model with identifier {identifier} and category {category}')
+
+        learning_rate = parameters.get('learning_rate', self.DEFAULT_LEARNING_RATE)
+        max_train_steps = int(parameters.get('max_train_steps', self.DEFAULT_MAX_TRAIN_STEPS))
+        num_category_images = int(parameters.get('num_category_images', 200))
+        if max_train_steps < 0 or max_train_steps > self.MAX_MAX_TRAIN_STEPS:
+            raise ValueError(
+                f'Expected max_train_steps to be in [0, {self.MAX_MAX_TRAIN_STEPS}] but got {max_train_steps}')
+        self.logger.info(f'Using learning rate {learning_rate}, max training steps {max_train_steps} and '
+                         f'{num_category_images} images for category {category}')
+
+        instance_prompt = f"a {identifier} {category}"
+
+        # save finetuned model into user_id/identifier folder if user_id is not metamodel, else save into METAMODEL_DIR
+        output_dir = f"{str(self._get_model_dir(user_id, identifier))}-experimental"
+        pretrained_model_dir = output_dir if user_id == self.METAMODEL_ID \
+            else os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+
+        # create temporary folder for instance data
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # create sub folder for instance data
+            instance_data_dir = os.path.join(tmp_dir, 'instance_data')
+            os.makedirs(instance_data_dir, exist_ok=True)
+            # create sub folder for class data
+            class_data_dir = os.path.join(tmp_dir, 'class_data')
+            os.makedirs(class_data_dir, exist_ok=True)
+            # save documents as pngs
+            for doc in docs:
+                if not doc.mime_type.startswith('image') and not doc.modality == 'image':
+                    raise ValueError(f'Only images are allowed but doc {doc.id} has mime_type {doc.mime_type} '
+                                     f'and modality {doc.modality}')
+
+                if doc.blob:
+                    doc.convert_blob_to_image_tensor()
+                elif doc.uri:
+                    doc.load_uri_to_image_tensor(timeout=10)
+                doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'), image_format='png')
+
+            torch.cuda.empty_cache()
+            # execute dreambooth.py
+            cur_dir = os.path.abspath(os.path.join(__file__, '..'))
+            # note this the output and error are switched for accelerate launch dreambooth.py
+            output, err = cmd(
+                [
+                    'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
+                    "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
+                    "--output_dir", f"{output_dir}",
+                    "--instance_data_dir", f"{instance_data_dir}", "--instance_prompt", f"{instance_prompt}",
+                    "--class_data_dir", f"{class_data_dir}", "--class_prompt", f"a {category}",
+                    '--with_prior_preservation',
+                    "--resolution", "512",
+                    "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
+                    "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "1",
+                    "--gradient_accumulation_steps", "1"
+                ]
+            )
+            for cmd_ret, cmd_ret_str in zip([output, err], ['output', 'error']):
+                if cmd_ret:
+                    error_message = err.decode('utf-8')  # .split('ERROR')[-1]
+                    # error_message = err.decode('utf-8').split('ERROR')[-1]
+                    error_message_print = f"----------\n{cmd_ret_str} message from dreambooth.py [Might not actually fail:"
+                    for line in error_message.splitlines():
+                        error_message_print += '\n' + line
+                    error_message_print += '\n----------'
+                    print(error_message_print, file=sys.stderr)
+
+            # if output:
+            #     output_message = output.decode('utf-8')
+            # raise RuntimeError(f'DreamBooth failed: {error_message}')
+
+        self.user_to_identifiers_and_categories[user_id][identifier] = category
+        with open(self.user_to_identifiers_and_categories_path, 'w') as f:
+            json.dump(self.user_to_identifiers_and_categories, f)
+
+        return DocumentArray(Document(text=identifier))
 
     @secure_request(level=SecurityLevel.USER, on='/finetune')
     def finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
@@ -248,6 +328,8 @@ class BIGDreamBoothExecutor(Executor):
             identifier = None
 
         model_path = self._get_model_dir(user_id, identifier)
+        if 'experimental' in parameters.keys():
+            model_path = str(model_path) + '-experimental'
 
         doc = self._generate(model_path=model_path, prompt=prompt)
         torch.cuda.empty_cache()
@@ -275,12 +357,16 @@ class BIGDreamBoothExecutor(Executor):
 
 def download_pretrained_stable_diffusion_model(model_dir: str, sd_version: str = 'stable-diffusion-v1-4'):
     """Downloads pretrained stable diffusion model."""
-    if not all(os.path.exists(os.path.join(model_dir, dir)) for dir in [
-        BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR
+    if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
+        BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
+        f"{BIGDreamBoothExecutor.METAMODEL_DIR}-experimental",
     ]):
         pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True)
-        for dir in [BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR]:
-            pipe.save_pretrained(os.path.join(model_dir, dir))
+        for _dir in [
+            BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
+            f"{BIGDreamBoothExecutor.METAMODEL_DIR}-experimental",
+        ]:
+            pipe.save_pretrained(os.path.join(model_dir, _dir))
 
 
 def cmd(command, std_output=False, wait=True):

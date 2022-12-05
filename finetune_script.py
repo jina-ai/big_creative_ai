@@ -2,13 +2,13 @@ from jina import Client, DocumentArray
 import hubble
 
 # specify the path to the images
-path_to_images = '/some/path/to/images'
+path_to_images = '/Users/joschkabraun/dev/data/briscoe/briscoe4-png-512-cropped'
 # specify the category of the images
-category = 'dog|painting|ping pong table|...'
+category = 'dog'
 
 # use the first host if accessing from outside Berlin office, else use the second one
-# host = 'grpc://87.191.159.105:51111'
-host = 'grpc://192.168.178.31:51111'
+host = 'grpc://87.191.159.105:51111'
+# host = 'grpc://192.168.178.31:51111'
 
 # 'own' for training from pretrained model, 'meta' for training metamodel
 target_model = 'own'
@@ -22,14 +22,18 @@ for doc in docs:
 client = Client(host=host)
 
 identifier_doc = client.post(
-    on='/finetune',
+    on='/experimental/finetune',
+    # on='/finetune',
     inputs=docs,
     parameters={
         'jwt': {
             'token': hubble.get_token(),
         },
         'category': category,
-        'target_model': target_model
+        'target_model': target_model,
+        'num_category_images': 200,
+        # 'learning_rate': 1e-6,
+        # 'max_train_steps': 600,
     },
 )
 
