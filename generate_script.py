@@ -31,7 +31,8 @@ for _identifier, _category in identifier_n_categories.items():
     prompt = prompt.replace(_identifier, f"{_identifier} {_category}")
 
 # generate 10 images
-folder_images = Path(f"generated_images/{prompt.replace(' ', '-').replace(',', '')}-{time.time()}")
+folder_images = Path(f"generated_images/{prompt.replace(' ', '-').replace(',', '')}")
+folder_images = Path(f"{str(folder_images)[:200]}-{time.time()}")
 folder_images.mkdir(exist_ok=True, parents=True)
 for i in range(10):
     image_docs = client.post(

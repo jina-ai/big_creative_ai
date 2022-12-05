@@ -6,7 +6,7 @@ This is based on [DreamBooth in huggingface/diffusers](https://github.com/huggin
 
 You can finetune your own  or the metamodel wth your own style or object. For that:
 
-1. prepare 3-5 high-quality (at least 512x512) images of your style or object in a folder
+1. prepare high-quality (at least 512x512) images of your style or object in a folder; quality over quantity but at least 3 images are recommended
 2. specify the path to the images and the category of them (e.g. dog, painting) in `finetune_script.py`
 3. specify the right host, depending on whether you are in the Berlin office or not
 4. specify whether you want a private model, trained from pretrained, or let the metamodel learn your object
