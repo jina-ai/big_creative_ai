@@ -208,12 +208,15 @@ class BIGDreamBoothExecutor(Executor):
             for cmd_ret, cmd_ret_str in zip([output, err], ['output', 'error']):
                 if cmd_ret:
                     error_message = err.decode('utf-8')  # .split('ERROR')[-1]
+                    if 'error' in error_message.lower():
+                        raise RuntimeError(f'Error in {cmd_ret_str} of dreambooth.py: {error_message}')
+
                     # error_message = err.decode('utf-8').split('ERROR')[-1]
-                    error_message_print = f"----------\n{cmd_ret_str} message from dreambooth.py [Might not actually fail:"
-                    for line in error_message.splitlines():
-                        error_message_print += '\n' + line
-                    error_message_print += '\n----------'
-                    print(error_message_print, file=sys.stderr)
+                    # error_message_print = f"----------\n{cmd_ret_str} message from dreambooth.py [Might not actually fail:"
+                    # for line in error_message.splitlines():
+                    #     error_message_print += '\n' + line
+                    # error_message_print += '\n----------'
+                    # print(error_message_print, file=sys.stderr)
 
             # if output:
             #     output_message = output.decode('utf-8')
@@ -291,16 +294,19 @@ class BIGDreamBoothExecutor(Executor):
             for cmd_ret, cmd_ret_str in zip([output, err], ['output', 'error']):
                 if cmd_ret:
                     error_message = err.decode('utf-8')#.split('ERROR')[-1]
-                    # error_message = err.decode('utf-8').split('ERROR')[-1]
-                    error_message_print = f"----------\n{cmd_ret_str} message from dreambooth.py [Might not actually fail:"
-                    for line in error_message.splitlines():
-                        error_message_print += '\n' + line
-                    error_message_print += '\n----------'
-                    print(error_message_print, file=sys.stderr)
+                    if 'error' in error_message.lower():
+                        raise RuntimeError(f'Error in {cmd_ret_str} of dreambooth.py: {error_message}')
 
-            # if output:
-            #     output_message = output.decode('utf-8')
-                # raise RuntimeError(f'DreamBooth failed: {error_message}')
+            #         # error_message = err.decode('utf-8').split('ERROR')[-1]
+            #         error_message_print = f"----------\n{cmd_ret_str} message from dreambooth.py [Might not actually fail:"
+            #         for line in error_message.splitlines():
+            #             error_message_print += '\n' + line
+            #         error_message_print += '\n----------'
+            #         print(error_message_print, file=sys.stderr)
+            #
+            # # if output:
+            # #     output_message = output.decode('utf-8')
+            #     # raise RuntimeError(f'DreamBooth failed: {error_message}')
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
