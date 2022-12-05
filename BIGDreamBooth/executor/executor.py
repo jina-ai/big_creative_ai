@@ -142,14 +142,12 @@ class BIGDreamBoothExecutor(Executor):
         """Finetunes stable diffusion model with DreamBooth for given object and returns the used identifier for that
         object.
 
-        :param docs: The images of the object to finetune the model with. Only 3-5 images are accepted.
+        :param docs: The images of the object to finetune the model with.
         :param parameters: The parameters for the finetuning; must contain the key 'target_model' which can be either
             'own' or METAMODEL_ID, where 'own' will finetune the model of the user who sent the request and METAMODEL_ID
             will finetune the metamodel; must contain the key 'category' which is the category of the object/style
         :return: The identifier used for the finetuning, which can be used to generate images of the object
         """
-        if len(docs) not in [3, 4, 5]:
-            raise ValueError(f'Expected 3, 4 or 5 documents but got {len(docs)}')
         if 'category' not in parameters:
             raise ValueError('No category for the images provided in parameters')
 
