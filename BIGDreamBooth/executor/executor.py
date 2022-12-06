@@ -58,6 +58,17 @@ class BIGDreamBoothExecutor(Executor):
         'vkv',
         'mpm',
         'mnm',
+        'mrm',
+        'msm',
+        'mtm',
+        'yry',
+        'zsz',
+        'qrq',
+        'qsq',
+        'qtr',
+        'pzp',
+        'qzq',
+        'qyq',
     ]
 
     DEFAULT_LEARNING_RATE = 5e-6
