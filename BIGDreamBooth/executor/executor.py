@@ -185,11 +185,7 @@ class BIGDreamBoothExecutor(Executor):
             instance_data_dir = os.path.join(tmp_dir, 'instance_data')
             os.makedirs(instance_data_dir, exist_ok=True)
             # save documents as pngs
-            for doc in docs:
-                if not doc.mime_type.startswith('image') and not doc.modality == 'image':
-                    raise ValueError(f'Only images are allowed but doc {doc.id} has mime_type {doc.mime_type} '
-                                     f'and modality {doc.modality}')
-
+            for doc in docs[0].chunks:
                 if doc.blob:
                     doc.convert_blob_to_image_tensor()
                 elif doc.uri:
@@ -198,16 +194,25 @@ class BIGDreamBoothExecutor(Executor):
             # class data
             class_data_dir = os.path.join(tmp_dir, 'class_data')
             os.makedirs(class_data_dir, exist_ok=True)
-            class_images = self._generate(
-                num_images=num_category_images,
-                prompt=class_prompt,
-                model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
-            )
-            for doc in class_images:
-                doc.convert_blob_to_image_tensor()
-                doc.save_image_tensor_to_file(file=os.path.join(class_data_dir, f'{doc.id}.png'), image_format='png')
+            if len(docs) > 1:
+                for doc in docs[1].chunks:
+                    if doc.blob:
+                        doc.convert_blob_to_image_tensor()
+                    elif doc.uri:
+                        doc.load_uri_to_image_tensor(timeout=10)
+                    doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'),
+                                                  image_format='png')
+            if len(docs) < 2 or len(docs[1].chunks) < num_category_images:
+                class_images = self._generate(
+                    num_images=num_category_images,
+                    prompt=class_prompt,
+                    model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+                )
+                for doc in class_images:
+                    doc.convert_blob_to_image_tensor()
+                    doc.save_image_tensor_to_file(file=os.path.join(class_data_dir, f'{doc.id}.png'), image_format='png')
+                torch.cuda.empty_cache()
 
-            torch.cuda.empty_cache()
             # execute dreambooth.py
             cur_dir = os.path.abspath(os.path.join(__file__, '..'))
             # note this the output and error are switched for accelerate launch dreambooth.py
