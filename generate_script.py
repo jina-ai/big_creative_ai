@@ -14,23 +14,24 @@ host = 'grpc://87.191.159.105:51111'
 
 num_images = 10
 
-target_model = 'own'  # 'own' for using own model, 'meta' for using metamodel
+target_model = 'pretrained'  # 'own' for using own model, 'meta' for using metamodel, 'pretrained' for using pretrained model
 
 
 client = Client(host=host)
 
-# update prompt with category of used identifiers
-identifier_n_categories = client.post(
-    on='/list_identifiers_n_categories',
-    parameters={
-        'jwt': {
-            'token': hubble.get_token(),
-        },
-    }
-)
-identifier_n_categories = identifier_n_categories[0].tags[target_model]
-for _identifier, _category in identifier_n_categories.items():
-    prompt = prompt.replace(_identifier, f"{_identifier} {_category}")
+if target_model != 'pretrained':
+    # update prompt with category of used identifiers
+    identifier_n_categories = client.post(
+        on='/list_identifiers_n_categories',
+        parameters={
+            'jwt': {
+                'token': hubble.get_token(),
+            },
+        }
+    )
+    identifier_n_categories = identifier_n_categories[0].tags[target_model]
+    for _identifier, _category in identifier_n_categories.items():
+        prompt = prompt.replace(_identifier, f"{_identifier} {_category}")
 
 # generate images
 folder_images_prefix = 'generated_images'

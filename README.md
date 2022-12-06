@@ -23,11 +23,12 @@ You can either use your own models or the metamodel to generate images. For that
 2. specify prompt with the identifier of the object/style you want to create 
    - note: category not needed as it's automatically fetched
 3. specify the right host, depending on whether you are in the Berlin office or not
-4. specify whether you want to use your own model or use the metamodel
+4. specify whether you want to use your own model or use the metamodel or simply pretrained stable difusion
    - the own model will be identified by the identifier you got back from the finetuning and it has been solely trained to fit your style/object
      - for your own model, set `target_model` to `'own'`
    - the metamodel has been trained to fit many styles
      - for the metamodel, set `target_model` to `'meta'`
+   - for the pretrained model, set `target_model` to `'pretrained'`
 5. run `generate_script.py`
 6. the generated image will be saved in the `generated_images` folder with the prompt and a timestamp as filename
 
