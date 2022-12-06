@@ -1,7 +1,6 @@
 jtype: Flow
 with:
 #  monitoring: true
-  timeout_send: 600000
   env:
     JINA_LOG_LEVEL: DEBUG
 jcloud:

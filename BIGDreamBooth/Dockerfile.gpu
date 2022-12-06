@@ -14,6 +14,7 @@ COPY requirements-gpu.txt requirements-gpu.txt
 RUN pip install --default-timeout=1000 --compile -r requirements-gpu.txt
 
 # fixing NameError: name 'str2optimizer8bit_blockwise' is not defined: https://github.com/TimDettmers/bitsandbytes/issues/62
+# need to build from source
 ENV LD_LIBRARY_PATH=/opt/conda/lib:$LD_LIBRARY_PATH
 ENV CONDA_PREFIX=/opt/conda
 RUN git clone https://github.com/TimDettmers/bitsandbytes.git /data/bitsandbytes/

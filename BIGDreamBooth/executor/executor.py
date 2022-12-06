@@ -350,7 +350,8 @@ class BIGDreamBoothExecutor(Executor):
 
         return image_docs
 
-    def _generate(self, num_images: int, model_path: str, prompt: str) -> DocumentArray:
+    @staticmethod
+    def _generate(num_images: int, model_path: str, prompt: str) -> DocumentArray:
         accelerator = Accelerator()
 
         torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
