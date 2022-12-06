@@ -345,6 +345,7 @@ class BIGDreamBoothExecutor(Executor):
         prompt = docs[0].text.strip()
         if not prompt:
             raise ValueError('No prompt provided')
+        num_images = int(parameters.get('num_images', 1))
 
         user_id = self._get_user_id(parameters)
         if user_id != self.METAMODEL_ID:
@@ -360,7 +361,7 @@ class BIGDreamBoothExecutor(Executor):
         if 'experimental' in parameters.keys():
             model_path = str(model_path) + '-experimental'
 
-        image_docs = self._generate(num_images=1, model_path=model_path, prompt=prompt)
+        image_docs = self._generate(num_images=num_images, model_path=model_path, prompt=prompt)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -392,7 +393,8 @@ class BIGDreamBoothExecutor(Executor):
             images = pipeline(example["prompt"]).images
             for image in images:
                 with io.BytesIO() as buffer:
-                    image.save(buffer, format='png')
+                    # save image as jpg to save space with quality 95
+                    image.save(buffer, format="JPEG", quality=95)
                     docs.append(Document(blob=buffer.getvalue()))
 
         del pipeline

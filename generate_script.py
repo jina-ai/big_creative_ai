@@ -9,8 +9,10 @@ prompt = f'a {object_style_identifier}'
 
 
 # use the first host if accessing from outside Berlin office, else use the second one
-# host = 'grpc://87.191.159.105:51111'
-host = 'grpc://192.168.178.31:51111'
+host = 'grpc://87.191.159.105:51111'
+# host = 'grpc://192.168.178.31:51111'
+
+num_images = 50
 
 target_model = 'own'  # 'own' for using own model, 'meta' for using metamodel
 
@@ -30,10 +32,10 @@ identifier_n_categories = identifier_n_categories[0].tags[target_model]
 for _identifier, _category in identifier_n_categories.items():
     prompt = prompt.replace(_identifier, f"{_identifier} {_category}")
 
-# generate 10 images
+# generate images
 folder_images_prefix = 'generated_images'
 if target_model == 'own':
-    folder_images_prefix += f'/{_identifier}'
+    folder_images_prefix += f'/{object_style_identifier}'
 elif target_model == 'meta':
     folder_images_prefix += f'/metamodel'
 else:
@@ -41,19 +43,21 @@ else:
 folder_images = Path(f"{folder_images_prefix}/{prompt.replace(' ', '-').replace(',', '')}")
 folder_images = Path(f"{str(folder_images)[:200]}-{time.time()}")
 folder_images.mkdir(exist_ok=True, parents=True)
-for i in range(10):
-    image_docs = client.post(
-        on='/generate',
-        inputs=Document(text=prompt),
-        parameters={
-            'jwt': {
-                'token': hubble.get_token(),
-            },
-            'identifier': object_style_identifier,
-            'target_model': target_model,
-        }
-    )
-    image_docs[0].save_blob_to_file(f"{str(folder_images)}/generation-{i}.png")
+
+image_docs = client.post(
+    on='/generate',
+    inputs=Document(text=prompt),
+    parameters={
+        'jwt': {
+            'token': hubble.get_token(),
+        },
+        'identifier': object_style_identifier,
+        'target_model': target_model,
+        'num_images': num_images,
+    }
+)
+for i, image_doc in enumerate(image_docs):
+    image_doc.save_blob_to_file(f"{str(folder_images)}/generation-{i}.png")
 
 print(f"Generations were successful and were saved to {folder_images}")
 
