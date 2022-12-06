@@ -25,6 +25,7 @@ from .dreambooth import PromptDataset
 class BIGDreamBoothExecutor(Executor):
     """BIGDreamBoothExecutor trains Stable Diffusion"""
 
+    PRE_TRAINED_MODEL_ID = 'pretrained'
     PRE_TRAINDED_MODEL_DIR = 'stable-diffusion-v1-4'
     METAMODEL_ID = 'meta'
     METAMODEL_DIR = 'metamodel'
@@ -115,22 +116,26 @@ class BIGDreamBoothExecutor(Executor):
         """
         if user_id == self.METAMODEL_ID:
             return os.path.join(self.models_dir, self.METAMODEL_DIR)
+        elif user_id == self.PRE_TRAINED_MODEL_ID:
+            return os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
         return os.path.join(self.models_dir, user_id, identifier)
 
     @staticmethod
     def _get_user_id(parameters: Dict = None):
         """Returns the user_id of the model which shall be finetuned.
         Using 'own' in the parameters for 'target_model' will return the user_id of the user who sent
-        the request. Using METAMODEL_ID will return the user_id of the metamodel.
+        the request. Using METAMODEL_ID or PRE_TRAINED_MODEL_ID will return the user_id of the metamodel or pretrained.
         """
         target_model = parameters.get('target_model', 'own')
         if target_model == 'own':
             user_id = _get_user_info(parameters['jwt']['token'])['_id']
         elif target_model == BIGDreamBoothExecutor.METAMODEL_ID:
-            user_id = BIGDreamBoothExecutor.METAMODEL_ID
+            user_id = BIGDreamBoothExecutor.METAMODEL_DIR
+        elif target_model == BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID:
+            user_id = BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID
         else:
             raise ValueError(f'Unknown target model {target_model}; must be either "own" or '
-                             f'"{BIGDreamBoothExecutor.METAMODEL_ID}"')
+                             f'"{BIGDreamBoothExecutor.METAMODEL_ID}" or "{BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID}"')
         return user_id
 
     @secure_request(SecurityLevel.ADMIN, on='/update_rare_identifiers')
@@ -159,6 +164,7 @@ class BIGDreamBoothExecutor(Executor):
 
         category = parameters['category']
         user_id = self._get_user_id(parameters)
+        assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
         identifier = self._get_next_identifier(list(self.user_to_identifiers_and_categories[user_id].keys()))
         self.logger.info(f'Finetuning model for {user_id} model with identifier {identifier} and category {category}')
 
@@ -276,6 +282,7 @@ class BIGDreamBoothExecutor(Executor):
         instance_prompt = f"a {identifier} {category}"
 
         # save finetuned model into user_id/identifier folder if user_id is not metamodel, else save into METAMODEL_DIR
+        assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
         output_dir = self._get_model_dir(user_id, identifier)
         pretrained_model_dir = output_dir if user_id == self.METAMODEL_ID \
             else os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
@@ -348,14 +355,14 @@ class BIGDreamBoothExecutor(Executor):
         num_images = int(parameters.get('num_images', 1))
 
         user_id = self._get_user_id(parameters)
-        if user_id != self.METAMODEL_ID:
+        if user_id in [self.METAMODEL_ID, self.PRE_TRAINED_MODEL_ID]:
+            identifier = None
+        else:
             identifier = parameters.get('identifier', '')
             if not identifier or identifier not in list(self.user_to_identifiers_and_categories[user_id].keys()):
                 raise ValueError(f'No identifier provided in parameters or identifier not used for finetuning\n'
                                  f'(identifier: "{identifier}", '
                                  f'used identifiers: {list(self.user_to_identifiers_and_categories[user_id].keys())})')
-        else:
-            identifier = None
 
         model_path = self._get_model_dir(user_id, identifier)
         if 'experimental' in parameters.keys():

@@ -12,7 +12,7 @@ prompt = f'a {object_style_identifier}'
 host = 'grpc://87.191.159.105:51111'
 # host = 'grpc://192.168.178.31:51111'
 
-num_images = 50
+num_images = 10
 
 target_model = 'own'  # 'own' for using own model, 'meta' for using metamodel
 
@@ -38,6 +38,8 @@ if target_model == 'own':
     folder_images_prefix += f'/{object_style_identifier}'
 elif target_model == 'meta':
     folder_images_prefix += f'/metamodel'
+elif target_model == 'pretrained':
+    folder_images_prefix += f'/pretrained'
 else:
     raise ValueError(f"Unknown target_model '{target_model}'")
 folder_images = Path(f"{folder_images_prefix}/{prompt.replace(' ', '-').replace(',', '')}")
