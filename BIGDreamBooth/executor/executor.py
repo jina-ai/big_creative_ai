@@ -232,7 +232,7 @@ class BIGDreamBoothExecutor(Executor):
                     '--with_prior_preservation',
                     "--resolution", "512",
                     "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
-                    "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "1",
+                    "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "2",
                     "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
                 ]
             )
@@ -388,14 +388,14 @@ class BIGDreamBoothExecutor(Executor):
         pipeline.set_progress_bar_config(disable=True)
 
         sample_dataset = PromptDataset(prompt, num_images)
-        sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=4)
+        sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=8)
 
         sample_dataloader = accelerator.prepare(sample_dataloader)
         pipeline.to(accelerator.device)
 
         docs = DocumentArray()
         for example in tqdm(
-            sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+            sample_dataloader, desc="Generating images", disable=not accelerator.is_local_main_process
         ):
             images = pipeline(example["prompt"]).images
             for image in images:
