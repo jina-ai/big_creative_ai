@@ -45,7 +45,6 @@ else:
     raise ValueError(f"Unknown target_model '{target_model}'")
 folder_images = Path(f"{folder_images_prefix}/{prompt.replace(' ', '-').replace(',', '')}")
 folder_images = Path(f"{str(folder_images)[:200]}-{time.time()}")
-folder_images.mkdir(exist_ok=True, parents=True)
 
 image_docs = client.post(
     on='/generate',
@@ -59,6 +58,7 @@ image_docs = client.post(
         'num_images': num_images,
     }
 )
+folder_images.mkdir(exist_ok=True, parents=True)
 for i, image_doc in enumerate(image_docs):
     image_doc.save_blob_to_file(f"{str(folder_images)}/generation-{i}.png")
 

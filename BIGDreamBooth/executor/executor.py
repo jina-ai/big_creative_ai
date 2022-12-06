@@ -1,4 +1,3 @@
-import hashlib
 import io
 import json
 import os
@@ -14,7 +13,6 @@ from diffusers import StableDiffusionPipeline
 from docarray import Document
 from huggingface_hub import login as hf_login
 from jina import DocumentArray
-import PIL
 import torch
 from tqdm import tqdm
 
@@ -206,7 +204,7 @@ class BIGDreamBoothExecutor(Executor):
                         doc.convert_blob_to_image_tensor()
                     elif doc.uri:
                         doc.load_uri_to_image_tensor(timeout=10)
-                    doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'),
+                    doc.save_image_tensor_to_file(file=os.path.join(class_data_dir, f'{doc.id}.png'),
                                                   image_format='png')
             if len(docs) < 2 or len(docs[1].chunks) < num_category_images:
                 class_images = self._generate(
