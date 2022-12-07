@@ -266,7 +266,7 @@ class BIGDreamBoothExecutor(Executor):
                 "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
                 "--output_dir", f"{output_dir}",
                 "--instance_data_dir", f"{instance_data_dir}", "--instance_prompt", f"{instance_prompt}",
-                "--class_data_dir", f"{class_data_dirs.join(',')}", "--class_prompt", f"{class_prompts.join(',')}",
+                "--class_data_dir", ','.join(class_data_dirs), "--class_prompt", ','.join({class_prompts}),
                 '--with_prior_preservation',
                 "--resolution", "512",
                 "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
