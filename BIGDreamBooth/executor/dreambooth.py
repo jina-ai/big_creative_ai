@@ -423,7 +423,7 @@ class DreamBoothDatasetOneInstanceMultipleClasses(Dataset):
             self.num_class_images = len(self.class_images_path)
             self._length = max(self.num_class_images, self.num_instance_images)
         else:
-            self.class_data_root = None
+            self.class_images_path = None
 
         self.image_transforms = transforms.Compose(
             [
@@ -450,7 +450,7 @@ class DreamBoothDatasetOneInstanceMultipleClasses(Dataset):
             max_length=self.tokenizer.model_max_length,
         ).input_ids
 
-        if self.class_data_root:
+        if self.class_images_path:
             class_index = index % self.num_class_images
             class_image = Image.open(self.class_images_path[class_index])
             class_prompt = self.class_prompts[class_index]
