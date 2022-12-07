@@ -68,6 +68,16 @@ class BIGDreamBoothExecutor(Executor):
         'pzp',
         'qzq',
         'qyq',
+        'byb',
+        'klk',
+        'kjk',
+        'kmk',
+        'kpk',
+        'kqk',
+        'kzk',
+        'kxk',
+        'kck',
+        'kdk',
     ]
 
     DEFAULT_LEARNING_RATE = 5e-6
