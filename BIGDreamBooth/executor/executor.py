@@ -165,6 +165,13 @@ class BIGDreamBoothExecutor(Executor):
             )
         )
 
+    @secure_request(SecurityLevel.ADMIN, on='/admin/reset_exp_meta_model')
+    def admin_reset_exp_metamodel(self, **kwargs):
+        """Resets the model of the user with the given user_id and identifier."""
+        pipe = StableDiffusionPipeline.from_pretrained(self._get_model_dir(self.PRE_TRAINED_MODEL_ID, None))
+        pipe.save_pretrained(f"{self._get_model_dir(self.METAMODEL_ID, None)}-experimental")
+        return None
+
     @secure_request(SecurityLevel.USER, on='/experimental/finetune')
     def experimental_finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
         if 'category' not in parameters:
