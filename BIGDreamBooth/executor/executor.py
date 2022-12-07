@@ -138,7 +138,7 @@ class BIGDreamBoothExecutor(Executor):
         if target_model == 'own':
             user_id = _get_user_info(parameters['jwt']['token'])['_id']
         elif target_model == BIGDreamBoothExecutor.METAMODEL_ID:
-            user_id = BIGDreamBoothExecutor.METAMODEL_DIR
+            user_id = BIGDreamBoothExecutor.METAMODEL_ID
         elif target_model == BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID:
             user_id = BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID
         else:
