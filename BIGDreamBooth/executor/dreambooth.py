@@ -643,8 +643,8 @@ def main(args):
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     train_dataset = DreamBoothDatasetOneInstanceMultipleClasses(
-        instance_data_roots=args.instance_data_dir,  # .split(','),
-        instance_prompts=args.instance_prompt,  # .split(','),
+        instance_data_root=args.instance_data_dir,  # .split(','),
+        instance_prompt=args.instance_prompt,  # .split(','),
         class_data_roots=args.class_data_dir.split(',') if args.with_prior_preservation else None,
         class_prompts=args.class_prompt.split(','),
         tokenizer=tokenizer,
