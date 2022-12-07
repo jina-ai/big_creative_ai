@@ -213,9 +213,14 @@ class BIGDreamBoothExecutor(Executor):
                     doc.load_uri_to_image_tensor(timeout=10)
                 doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'), image_format='png')
             # class data
-            class_data_dir = os.path.join(tmp_dir, 'class_data')
-            os.makedirs(class_data_dir, exist_ok=True)
+            class_data_dir_root = os.path.join(tmp_dir, 'class_data')
+            os.makedirs(class_data_dir_root)
+            class_data_dirs = []
+            class_prompts = []
+            # class data for category
             if len(docs) > 1:
+                class_data_dir = os.path.join(class_data_dir_root, '0')
+                os.makedirs(class_data_dir)
                 for doc in docs[1].chunks:
                     if doc.blob:
                         doc.convert_blob_to_image_tensor()
@@ -223,34 +228,53 @@ class BIGDreamBoothExecutor(Executor):
                         doc.load_uri_to_image_tensor(timeout=10)
                     doc.save_image_tensor_to_file(file=os.path.join(class_data_dir, f'{doc.id}.png'),
                                                   image_format='png')
-            if len(docs) < 2 or len(docs[1].chunks) < num_category_images:
-                class_images = self._generate(
-                    num_images=num_category_images,
-                    prompt=class_prompt,
-                    model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
-                )
-                for doc in class_images:
-                    doc.convert_blob_to_image_tensor()
-                    doc.save_image_tensor_to_file(file=os.path.join(class_data_dir, f'{doc.id}.png'), image_format='png')
-                torch.cuda.empty_cache()
+                class_data_dirs.append(class_data_dir)
+                class_prompts.append(class_prompt)
+            # class data for rare identifiers
+            for i, doc in enumerate(docs[2:]):
+                class_data_dir = os.path.join(class_data_dir_root, str(i + 1))
+                os.makedirs(class_data_dir)
+                assert doc.text, f'Expected text for class {i + 1} but got {doc.text}'
+                for doc in doc.chunks:
+                    if doc.blob:
+                        doc.convert_blob_to_image_tensor()
+                    elif doc.uri:
+                        doc.load_uri_to_image_tensor(timeout=10)
+                    doc.save_image_tensor_to_file(file=os.path.join(class_data_dir
+                                                                    , f'{doc.id}.png'), image_format='png')
+                class_data_dirs.append(class_data_dir)
+                class_prompts.append(doc.text)
+
+            # if len(docs) < 2 or len(docs[1].chunks) < num_category_images:
+            #     raise ValueError(f'Expected at least {num_category_images} images for category {category} but got '
+            #                      f'{len(docs[1].chunks)}')
+            #     # class_images = self._generate(
+            #     #     num_images=num_category_images,
+            #     #     prompt=class_prompt,
+            #     #     model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+            #     # )
+            #     # for doc in class_images:
+            #     #     doc.convert_blob_to_image_tensor()
+            #     #     doc.save_image_tensor_to_file(file=os.path.join(class_data_dir, f'{doc.id}.png'), image_format='png')
+            #     # torch.cuda.empty_cache()
 
             # execute dreambooth.py
             cur_dir = os.path.abspath(os.path.join(__file__, '..'))
             # note this the output and error are switched for accelerate launch dreambooth.py
-            output, err = cmd(
-                [
-                    'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
-                    "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
-                    "--output_dir", f"{output_dir}",
-                    "--instance_data_dir", f"{instance_data_dir}", "--instance_prompt", f"{instance_prompt}",
-                    "--class_data_dir", f"{class_data_dir}", "--class_prompt", f"{class_prompt}",
-                    '--with_prior_preservation',
-                    "--resolution", "512",
-                    "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
-                    "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "2",
-                    "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
-                ]
-            )
+            cmd_args = [
+                'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
+                "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
+                "--output_dir", f"{output_dir}",
+                "--instance_data_dir", f"{instance_data_dir}", "--instance_prompt", f"{instance_prompt}",
+                "--class_data_dir", f"{class_data_dirs}", "--class_prompt", f"{class_prompts}",
+                '--with_prior_preservation',
+                "--resolution", "512",
+                "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
+                "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "2",
+                "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
+            ]
+            self.logger.info(f'Executing {" ".join(cmd_args)}')
+            output, err = cmd(cmd_args)
             for cmd_ret in [output, err]:
                 if cmd_ret:
                     error_message = cmd_ret .decode('utf-8')
