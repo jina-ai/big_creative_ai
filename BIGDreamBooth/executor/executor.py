@@ -1,12 +1,16 @@
+import glob
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from collections import defaultdict
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
+from PIL.Image import Image
 from accelerate import Accelerator
 from accelerate.utils import write_basic_config
 from diffusers import StableDiffusionPipeline
@@ -78,6 +82,16 @@ class BIGDreamBoothExecutor(Executor):
         'kxk',
         'kck',
         'kdk',
+        'cic',
+        'cjc',
+        'ckc',
+        'clc',
+        'cmc',
+        'cpc',
+        'cqc',
+        'crc',
+        'csc',
+        'ctc',
     ]
 
     DEFAULT_LEARNING_RATE = 5e-6
@@ -94,12 +108,11 @@ class BIGDreamBoothExecutor(Executor):
 
         hf_login(token=hf_token)
 
-        self.models_dir = (
-            os.path.join(self.workspace, 'models')
-            if self.workspace
-            else None
-        )
+        self.models_dir = os.path.join(self.workspace, 'models')
         os.makedirs(self.models_dir, exist_ok=True)
+        self.category_images_dir = os.path.join(self.workspace, 'category_images')
+        os.makedirs(self.category_images_dir, exist_ok=True)
+        self.metamodel_instance_images_dir = os.path.join(self.workspace, 'metamodel_instance_images')
         download_pretrained_stable_diffusion_model(self.models_dir)
 
         self.user_to_identifiers_and_categories: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
@@ -165,23 +178,148 @@ class BIGDreamBoothExecutor(Executor):
             )
         )
 
-    @secure_request(SecurityLevel.ADMIN, on='/admin/reset_exp_meta_model')
-    def admin_reset_exp_metamodel(self, **kwargs):
-        """Resets the model of the user with the given user_id and identifier."""
-        pipe = StableDiffusionPipeline.from_pretrained(self._get_model_dir(self.PRE_TRAINED_MODEL_ID, None))
-        pipe.save_pretrained(f"{self._get_model_dir(self.METAMODEL_ID, None)}-experimental")
+    @secure_request(SecurityLevel.ADMIN, on='/admin/reset_model')
+    def reset_model(self, parameters: Dict, **kwargs):
+        """Resets the model for given model directory."""
+        user_id, identifier, model_path = self._get_user_id_identifier_model_path(parameters, generate_id=False)
+        self.logger.info(f'Deleting model {model_path}')
+        if user_id == self.METAMODEL_ID:
+            del self.user_to_identifiers_and_categories[user_id]
+            pipe = StableDiffusionPipeline.from_pretrained(os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR))
+            pipe.save_pretrained(model_path)
+            # delete all subdirectories of self.metamodel_instance_images_dir
+            for sub_dir in os.listdir(self.metamodel_instance_images_dir):
+                shutil.rmtree(os.path.join(self.metamodel_instance_images_dir, sub_dir))
+        else:
+            del self.user_to_identifiers_and_categories[user_id][identifier]
+            shutil.rmtree(model_path)
         return None
 
-    @secure_request(SecurityLevel.USER, on='/experimental/finetune')
-    def experimental_finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
-        if 'category' not in parameters:
-            raise ValueError('No category for the images provided in parameters')
-
-        category = parameters['category']
+    def _get_user_id_identifier_model_path(self, parameters: Dict, generate_id: bool) -> Tuple[str, str, str]:
         user_id = self._get_user_id(parameters)
-        assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
-        identifier = self._get_next_identifier(list(self.user_to_identifiers_and_categories[user_id].keys()))
-        self.logger.info(f'Finetuning model for {user_id} model with identifier {identifier} and category {category}')
+        if generate_id:
+            identifier = self._get_next_identifier(list(self.user_to_identifiers_and_categories[user_id].keys()))
+        else:
+            identifier = parameters.get('identifier', '')
+            if not identifier or identifier not in list(self.user_to_identifiers_and_categories[user_id].keys()):
+                raise ValueError(f'No identifier provided in parameters or identifier not used for finetuning\n'
+                                 f'(identifier: "{identifier}", '
+                                 f'used identifiers: {list(self.user_to_identifiers_and_categories[user_id].keys())})')
+        model_path = self._get_model_dir(user_id, identifier)
+        return user_id, identifier, model_path
+
+    @staticmethod
+    def _get_cat_inst_to_num_images_metamodel(
+            num_category_images: int, cur_cat: str, cat_to_prev_ids: Dict[str, List[str]]
+    ) -> Tuple[Dict[str, int], Dict[str, int]]:
+        num_other_cats = len([_cat for _cat in cat_to_prev_ids.keys() if _cat != cur_cat])
+        # half of all images are for the current category, the rest are split evenly among the other categories
+        if num_other_cats > 0:
+            num_category_images_cur_cat = num_category_images // 2
+            num_category_images_other_cat = num_category_images // 2 // num_other_cats
+        else:
+            num_category_images_cur_cat = num_category_images
+            num_category_images_other_cat = 0
+
+        if cur_cat not in cat_to_prev_ids.keys():
+            category2num_images = {cur_cat: num_category_images_cur_cat}
+            instance2num_images = {}
+        else:
+            category2num_images = {cur_cat: num_category_images_cur_cat // 2}
+            instance2num_images = {
+                _prev_id: num_category_images_cur_cat // 2 // len(cat_to_prev_ids[cur_cat])
+                for _prev_id in cat_to_prev_ids[cur_cat]}
+
+        for _cat, _prev_ids in cat_to_prev_ids.items():
+            if _cat == cur_cat:
+                continue
+            category2num_images[_cat] = num_category_images_other_cat // 2
+            for _prev_id in _prev_ids:
+                instance2num_images[_prev_id] = num_category_images_other_cat // 2 // len(_prev_ids)
+
+        return category2num_images, instance2num_images
+
+    def _get_prior_preservation_loss_data_dirs_prompts(
+            self, user_id: str, identifier: str, instance_images: DocumentArray, category: str, max_train_steps: int,
+            tmp_dir
+    ) -> Tuple[List[str], List[str]]:
+        # if metamodel, then save instance images to disk
+        if user_id == self.METAMODEL_ID:
+            _metamodel_instance_data_dir = os.path.join(self.metamodel_instance_images_dir, identifier)
+            os.makedirs(_metamodel_instance_data_dir, exist_ok=True)
+            for i, doc in enumerate(instance_images):
+                if doc.blob:
+                    doc.convert_blob_to_image_tensor()
+                elif doc.uri:
+                    doc.convert_uri_to_image_tensor(timeout=10)
+                doc.save_image_tensor_to_file(
+                    file=os.path.join(_metamodel_instance_data_dir, f'{i}.jpeg'),
+                    image_format='jpeg'
+                )
+
+        # get quantities needed
+        if user_id == self.METAMODEL_ID:
+            cat2prev_ids = defaultdict(list)
+            instance2category = self.user_to_identifiers_and_categories[user_id]
+            for _id, _cat in instance2category.items():
+                cat2prev_ids[_cat].append(_id)
+            category2num_images, instance2num_images = self._get_cat_inst_to_num_images_metamodel(
+                num_category_images=max_train_steps, cur_cat=category, cat_to_prev_ids=cat2prev_ids
+            )
+        else:
+            category2num_images = {category: max_train_steps}
+            instance2num_images = {}
+            instance2category = {}
+
+        # generate category images if needed
+        for _category, _num_images in category2num_images.items():
+            _category_data_dir = os.path.join(self.category_images_dir, _category)
+            os.makedirs(_category_data_dir, exist_ok=True)
+            _num_existing_images = len(glob.glob(os.path.join(_category_data_dir, '*.jpeg')))
+            if _num_existing_images < _num_images:
+                self.logger.info(f'Generating {_num_images - _num_existing_images} images for category {_category}')
+                _category_images = self._generate(
+                    num_images=_num_images,
+                    prompt=_category,
+                    model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+                )
+                torch.cuda.empty_cache()
+                for i, doc in enumerate(_category_images):
+                    doc.convert_blob_to_image_tensor()
+                    doc.save_image_tensor_to_file(
+                        file=os.path.join(_category_data_dir, f'{i}.jpeg'), image_format='jpeg'
+                    )
+
+        # copy images to tmp dir
+        data_dirs = []
+        prompts = []
+        for _category, _num_images in category2num_images.items():
+            _category_data_dir = os.path.join(self.category_images_dir, _category)
+            _tmp_category_data_dir = os.path.join(tmp_dir, _category)
+            os.makedirs(_tmp_category_data_dir, exist_ok=True)
+            for _file in glob.glob(os.path.join(_category_data_dir, '*.jpeg'))[:_num_images]:
+                shutil.copy(_file, _tmp_category_data_dir)
+            data_dirs.append(_tmp_category_data_dir)
+            prompts.append(f"a {_category}")
+
+        for _instance, _num_images in instance2num_images.items():
+            _instance_data_dir = os.path.join(self.metamodel_instance_images_dir, _instance)
+            _tmp_instance_data_dir = os.path.join(tmp_dir, _instance)
+            os.makedirs(_tmp_instance_data_dir, exist_ok=True)
+            while len(glob.glob(os.path.join(_tmp_instance_data_dir, '*.jpeg'))) < _num_images:
+                difference = _num_images - len(glob.glob(os.path.join(_tmp_instance_data_dir, '*.jpeg')))
+                for _file in glob.glob(os.path.join(_instance_data_dir, '*.jpeg'))[:difference]:
+                    _file_name = os.path.basename(_file)
+                    _file_name = _file_name.split('.')[0] + str(time.time()).replace('.', '-') + '.jpeg'
+                    shutil.copy(_file, os.path.join(_tmp_instance_data_dir, _file_name))
+            data_dirs.append(_tmp_instance_data_dir)
+            prompts.append(f"a {_instance} {instance2category[_instance]}")
+
+        return data_dirs, prompts
+
+    @secure_request(SecurityLevel.USER, on='/finetune')
+    def finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
+        category = parameters['category']
 
         learning_rate = parameters.get('learning_rate', self.DEFAULT_LEARNING_RATE)
         max_train_steps = int(parameters.get('max_train_steps', self.DEFAULT_MAX_TRAIN_STEPS))
@@ -192,13 +330,14 @@ class BIGDreamBoothExecutor(Executor):
         self.logger.info(f'Using learning rate {learning_rate}, max training steps {max_train_steps} and '
                          f'{num_category_images} images for category {category}')
 
-        instance_prompt = f"a {identifier} {category}"
-        class_prompt = f"a {category}"
-
-        # save finetuned model into user_id/identifier folder if user_id is not metamodel, else save into METAMODEL_DIR
-        output_dir = f"{str(self._get_model_dir(user_id, identifier))}-experimental"
+        user_id, identifier, output_dir = self._get_user_id_identifier_model_path(parameters)
+        assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
         pretrained_model_dir = output_dir if user_id == self.METAMODEL_ID \
             else os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+
+        self.logger.info(f'Finetuning model in {output_dir} model with identifier {identifier} and category {category}')
+
+        instance_prompt = f"a {identifier} {category}"
 
         # create temporary folder for instance data
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -211,52 +350,13 @@ class BIGDreamBoothExecutor(Executor):
                     doc.convert_blob_to_image_tensor()
                 elif doc.uri:
                     doc.load_uri_to_image_tensor(timeout=10)
-                doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'), image_format='png')
+                doc.blob = ndarray_to_jpeg_bytes(doc.tensor)
+                doc.save_blob_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.jpeg'))
             # class data
-            class_data_dir_root = os.path.join(tmp_dir, 'class_data')
-            os.makedirs(class_data_dir_root)
-            class_data_dirs = []
-            class_prompts = []
-            # class data for category
-            if len(docs) > 1:
-                class_data_dir = os.path.join(class_data_dir_root, '0')
-                os.makedirs(class_data_dir)
-                for doc in docs[1].chunks:
-                    if doc.blob:
-                        doc.convert_blob_to_image_tensor()
-                    elif doc.uri:
-                        doc.load_uri_to_image_tensor(timeout=10)
-                    doc.save_image_tensor_to_file(file=os.path.join(class_data_dir, f'{doc.id}.png'),
-                                                  image_format='png')
-                class_data_dirs.append(class_data_dir)
-                class_prompts.append(class_prompt)
-            # class data for rare identifiers
-            for i, doc in enumerate(docs[2:]):
-                class_data_dir = os.path.join(class_data_dir_root, str(i + 1))
-                os.makedirs(class_data_dir)
-                assert doc.text, f'Expected text for class {i + 1} but got {doc.text}'
-                for doc in doc.chunks:
-                    if doc.blob:
-                        doc.convert_blob_to_image_tensor()
-                    elif doc.uri:
-                        doc.load_uri_to_image_tensor(timeout=10)
-                    doc.save_image_tensor_to_file(file=os.path.join(class_data_dir
-                                                                    , f'{doc.id}.png'), image_format='png')
-                class_data_dirs.append(class_data_dir)
-                class_prompts.append(doc.text)
-
-            # if len(docs) < 2 or len(docs[1].chunks) < num_category_images:
-            #     raise ValueError(f'Expected at least {num_category_images} images for category {category} but got '
-            #                      f'{len(docs[1].chunks)}')
-            #     # class_images = self._generate(
-            #     #     num_images=num_category_images,
-            #     #     prompt=class_prompt,
-            #     #     model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
-            #     # )
-            #     # for doc in class_images:
-            #     #     doc.convert_blob_to_image_tensor()
-            #     #     doc.save_image_tensor_to_file(file=os.path.join(class_data_dir, f'{doc.id}.png'), image_format='png')
-            #     # torch.cuda.empty_cache()
+            pp_data_dirs, pp_prompts = self._get_prior_preservation_loss_data_dirs_prompts(
+                user_id=user_id, identifier=identifier, category=category, num_category_images=num_category_images,
+                max_train_steps=max_train_steps, tmp_dir=tmp_dir,
+            )
 
             # execute dreambooth.py
             cur_dir = os.path.abspath(os.path.join(__file__, '..'))
@@ -266,7 +366,7 @@ class BIGDreamBoothExecutor(Executor):
                 "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
                 "--output_dir", f"{output_dir}",
                 "--instance_data_dir", f"{instance_data_dir}", "--instance_prompt", f"{instance_prompt}",
-                "--class_data_dir", ','.join(class_data_dirs), "--class_prompt", ','.join(class_prompts),
+                "--class_data_dir", ','.join(pp_data_dirs), "--class_prompt", ','.join(pp_prompts),
                 '--with_prior_preservation',
                 "--resolution", "512",
                 "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
@@ -274,89 +374,8 @@ class BIGDreamBoothExecutor(Executor):
                 "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
             ]
             self.logger.info(f'Executing {" ".join(cmd_args)}')
+            print(f'Executing {" ".join(cmd_args)}')
             output, err = cmd(cmd_args)
-            for cmd_ret in [output, err]:
-                if cmd_ret:
-                    error_message = cmd_ret .decode('utf-8')
-                    if 'error' in error_message.lower():
-                        error_message_print = f"----------\nOutput:"
-                        for line in error_message.splitlines():
-                            error_message_print += '\n' + line
-                        error_message_print += '\n----------'
-                        print(error_message_print, file=sys.stderr)
-                        raise RuntimeError(f'Error while executing dreambooth.py:'
-                                           f"{err.decode('utf-8').split('ERROR')[-1]}")
-
-        self.user_to_identifiers_and_categories[user_id][identifier] = category
-        with open(self.user_to_identifiers_and_categories_path, 'w') as f:
-            json.dump(self.user_to_identifiers_and_categories, f)
-
-        return DocumentArray(Document(text=identifier))
-
-    @secure_request(level=SecurityLevel.USER, on='/finetune')
-    def finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
-        """Finetunes stable diffusion model with DreamBooth for given object and returns the used identifier for that
-        object.
-
-        :param docs: The images of the object to finetune the model with.
-        :param parameters: The parameters for the finetuning; must contain the key 'target_model' which can be either
-            'own' or METAMODEL_ID, where 'own' will finetune the model of the user who sent the request and METAMODEL_ID
-            will finetune the metamodel; must contain the key 'category' which is the category of the object/style
-        :return: The identifier used for the finetuning, which can be used to generate images of the object
-        """
-        if 'category' not in parameters:
-            raise ValueError('No category for the images provided in parameters')
-
-        category = parameters['category']
-        user_id = self._get_user_id(parameters)
-        identifier = self._get_next_identifier(list(self.user_to_identifiers_and_categories[user_id].keys()))
-        self.logger.info(f'Finetuning model for {user_id} model with identifier {identifier} and category {category}')
-
-        learning_rate = parameters.get('learning_rate', self.DEFAULT_LEARNING_RATE)
-        max_train_steps = int(parameters.get('max_train_steps', self.DEFAULT_MAX_TRAIN_STEPS))
-        if max_train_steps < 0 or max_train_steps > self.MAX_MAX_TRAIN_STEPS:
-            raise ValueError(f'Expected max_train_steps to be in [0, {self.MAX_MAX_TRAIN_STEPS}] but got {max_train_steps}')
-        self.logger.info(f'Using learning rate {learning_rate} and max training steps {max_train_steps}')
-
-        instance_prompt = f"a {identifier} {category}"
-
-        # save finetuned model into user_id/identifier folder if user_id is not metamodel, else save into METAMODEL_DIR
-        assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
-        output_dir = self._get_model_dir(user_id, identifier)
-        pretrained_model_dir = output_dir if user_id == self.METAMODEL_ID \
-            else os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
-
-        # create temporary folder for instance data
-        with tempfile.TemporaryDirectory() as instance_data_dir:
-            # save documents as pngs
-            for doc in docs:
-                if not doc.mime_type.startswith('image') and not doc.modality == 'image':
-                    raise ValueError(f'Only images are allowed but doc {doc.id} has mime_type {doc.mime_type} '
-                                     f'and modality {doc.modality}')
-
-                if doc.blob:
-                    doc.convert_blob_to_image_tensor()
-                elif doc.uri:
-                    doc.load_uri_to_image_tensor(timeout=10)
-                doc.save_image_tensor_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.png'), image_format='png')
-
-            torch.cuda.empty_cache()
-            # execute dreambooth.py
-            cur_dir = os.path.abspath(os.path.join(__file__, '..'))
-            # note this the output and error are switched for accelerate launch dreambooth.py
-            output, err = cmd(
-                [
-                    'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
-                    "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
-                    "--output_dir", f"{output_dir}",
-                    "--instance_data_dir", f"{instance_data_dir}",
-                    "--instance_prompt", f"{instance_prompt}",
-                    "--resolution", "512",
-                    "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
-                    "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "1",
-                    "--gradient_accumulation_steps", "1"
-                 ]
-            )
             for cmd_ret in [output, err]:
                 if cmd_ret:
                     error_message = cmd_ret .decode('utf-8')
@@ -379,39 +398,21 @@ class BIGDreamBoothExecutor(Executor):
     def generate(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
         """Generates images of the object with the given identifier.
 
-        :param docs: Only one document is expected which contains the prompt for the generation
+        :param docs: Prompts for the generation of the images.
         :param parameters: The parameters for the generation; must contain the key 'target_model' which can be either
             'own' or METAMODEL_ID, where 'own' will generate images of the model of the user who sent the request and
             METAMODEL_ID will generate images of the metamodel; if using own model, must contain the key 'identifier'
             which is the identifier used to fit original images of object
         :return: The generated image
         """
-        if len(docs) != 1:
-            raise ValueError(f'Expected 1 document for prompt but got {len(docs)}')
-        prompt = docs[0].text.strip()
-        if not prompt:
-            raise ValueError('No prompt provided')
         num_images = int(parameters.get('num_images', 1))
+        user_id, identifier, model_path = self._get_user_id_identifier_model_path(parameters, generate_id=False)
 
-        user_id = self._get_user_id(parameters)
-        if user_id in [self.METAMODEL_ID, self.PRE_TRAINED_MODEL_ID]:
-            identifier = None
-        else:
-            identifier = parameters.get('identifier', '')
-            if not identifier or identifier not in list(self.user_to_identifiers_and_categories[user_id].keys()):
-                raise ValueError(f'No identifier provided in parameters or identifier not used for finetuning\n'
-                                 f'(identifier: "{identifier}", '
-                                 f'used identifiers: {list(self.user_to_identifiers_and_categories[user_id].keys())})')
-
-        model_path = self._get_model_dir(user_id, identifier)
-        if 'experimental' in parameters.keys():
-            model_path = str(model_path) + '-experimental'
-
-        image_docs = self._generate(num_images=num_images, model_path=model_path, prompt=prompt)
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        return image_docs
+        for doc in docs:
+            prompt = doc.text.strip()
+            doc.chunks = self._generate(num_images=num_images, model_path=model_path, prompt=prompt)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     @staticmethod
     def _generate(num_images: int, model_path: str, prompt: str) -> DocumentArray:
@@ -439,7 +440,7 @@ class BIGDreamBoothExecutor(Executor):
             images = pipeline(example["prompt"]).images
             for image in images:
                 with io.BytesIO() as buffer:
-                    # save image as jpg to save space with quality 95
+                    # save image as jpeg to save space with quality 95
                     image.save(buffer, format="JPEG", quality=95)
                     docs.append(Document(blob=buffer.getvalue()))
 
@@ -462,12 +463,10 @@ def download_pretrained_stable_diffusion_model(model_dir: str, sd_version: str =
     """Downloads pretrained stable diffusion model."""
     if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
         BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
-        f"{BIGDreamBoothExecutor.METAMODEL_DIR}-experimental",
     ]):
         pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True)
         for _dir in [
             BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
-            f"{BIGDreamBoothExecutor.METAMODEL_DIR}-experimental",
         ]:
             pipe.save_pretrained(os.path.join(model_dir, _dir))
 
@@ -484,3 +483,12 @@ def cmd(command, std_output=False, wait=True):
     if wait:
         output, error = process.communicate()
         return output, error
+
+
+def ndarray_to_jpeg_bytes(arr) -> bytes:
+    pil_img = Image.fromarray(arr)
+    pil_img.thumbnail((512, 512))
+    pil_img = pil_img.convert('RGB')
+    img_byte_arr = io.BytesIO()
+    pil_img.save(img_byte_arr, format="JPEG", quality=95)
+    return img_byte_arr.getvalue()
