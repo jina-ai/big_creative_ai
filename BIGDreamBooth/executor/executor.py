@@ -144,18 +144,18 @@ class BIGDreamBoothExecutor(Executor):
     @staticmethod
     def _get_user_id(parameters: Dict = None):
         """Returns the user_id of the model which shall be finetuned.
-        Using 'own' in the parameters for 'target_model' will return the user_id of the user who sent
+        Using 'private' in the parameters for 'target_model' will return the user_id of the user who sent
         the request. Using METAMODEL_ID or PRE_TRAINED_MODEL_ID will return the user_id of the metamodel or pretrained.
         """
-        target_model = parameters.get('target_model', 'own')
-        if target_model == 'own':
+        target_model = parameters.get('target_model', 'private')
+        if target_model == 'private':
             user_id = _get_user_info(parameters['jwt']['token'])['_id']
         elif target_model == BIGDreamBoothExecutor.METAMODEL_ID:
             user_id = BIGDreamBoothExecutor.METAMODEL_ID
         elif target_model == BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID:
             user_id = BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID
         else:
-            raise ValueError(f'Unknown target model {target_model}; must be either "own" or '
+            raise ValueError(f'Unknown target model {target_model}; must be either "private" or '
                              f'"{BIGDreamBoothExecutor.METAMODEL_ID}" or "{BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID}"')
         return user_id
 
@@ -172,7 +172,7 @@ class BIGDreamBoothExecutor(Executor):
         return DocumentArray(
             Document(
                 tags={
-                    'own': self.user_to_identifiers_and_categories.get(user_id, {}),
+                    'private': self.user_to_identifiers_and_categories.get(user_id, {}),
                     self.METAMODEL_ID: self.user_to_identifiers_and_categories.get(self.METAMODEL_ID)
                 }
             )
@@ -319,6 +319,15 @@ class BIGDreamBoothExecutor(Executor):
 
     @secure_request(SecurityLevel.USER, on='/finetune')
     def finetune(self, docs: DocumentArray, parameters: Dict = None, **kwargs):
+        """Finetunes stable diffusion model with DreamBooth for given object and returns the used identifier for that
+        object.
+        :param docs: The images of the object to finetune the model with.
+        :param parameters: The parameters for the finetuning; must contain the key 'target_model' which can be either
+            'private' or METAMODEL_ID, where 'private' will finetune the model of the user who sent the request and
+            METAMODEL_ID will finetune the metamodel; must contain the key 'category' which is the category of the
+            object/style
+        :return: The identifier used for the finetuning, which can be used to generate images of the object
+        """
         category = parameters['category']
 
         learning_rate = parameters.get('learning_rate', self.DEFAULT_LEARNING_RATE)
@@ -400,8 +409,8 @@ class BIGDreamBoothExecutor(Executor):
 
         :param docs: Prompts for the generation of the images.
         :param parameters: The parameters for the generation; must contain the key 'target_model' which can be either
-            'own' or METAMODEL_ID, where 'own' will generate images of the model of the user who sent the request and
-            METAMODEL_ID will generate images of the metamodel; if using own model, must contain the key 'identifier'
+            'private' or METAMODEL_ID, where 'private' will generate images of the model of the user who sent the request and
+            METAMODEL_ID will generate images of the metamodel; if using private model, must contain the key 'identifier'
             which is the identifier used to fit original images of object
         :return: The generated image
         """
