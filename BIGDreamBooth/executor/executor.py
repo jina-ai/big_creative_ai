@@ -332,12 +332,11 @@ class BIGDreamBoothExecutor(Executor):
 
         learning_rate = parameters.get('learning_rate', self.DEFAULT_LEARNING_RATE)
         max_train_steps = int(parameters.get('max_train_steps', self.DEFAULT_MAX_TRAIN_STEPS))
-        num_category_images = int(parameters.get('num_category_images', 200))
         if max_train_steps < 0 or max_train_steps > self.MAX_MAX_TRAIN_STEPS:
             raise ValueError(
                 f'Expected max_train_steps to be in [0, {self.MAX_MAX_TRAIN_STEPS}] but got {max_train_steps}')
-        self.logger.info(f'Using learning rate {learning_rate}, max training steps {max_train_steps} and '
-                         f'{num_category_images} images for category {category}')
+        self.logger.info(f'Using learning rate {learning_rate}, max training steps {max_train_steps} '
+                         f'for category {category}')
 
         user_id, identifier, output_dir = self._get_user_id_identifier_model_path(parameters)
         assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
@@ -354,7 +353,7 @@ class BIGDreamBoothExecutor(Executor):
             instance_data_dir = os.path.join(tmp_dir, 'instance_data')
             os.makedirs(instance_data_dir, exist_ok=True)
             # save documents as pngs
-            for doc in docs[0].chunks:
+            for doc in docs:
                 if doc.blob:
                     doc.convert_blob_to_image_tensor()
                 elif doc.uri:
@@ -363,7 +362,7 @@ class BIGDreamBoothExecutor(Executor):
                 doc.save_blob_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.jpeg'))
             # class data
             pp_data_dirs, pp_prompts = self._get_prior_preservation_loss_data_dirs_prompts(
-                user_id=user_id, identifier=identifier, category=category, num_category_images=num_category_images,
+                user_id=user_id, identifier=identifier, category=category, num_category_images=max_train_steps,
                 max_train_steps=max_train_steps, tmp_dir=tmp_dir,
             )
 
