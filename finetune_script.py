@@ -13,14 +13,12 @@ max_train_steps = 200
 learning_rate = 1e-4
 
 
-host = 'grpc://87.191.159.105:51111'
-
 docs = DocumentArray.from_files(f'{path_to_instance_images}/**')
 for doc in docs:
     doc.load_uri_to_blob()
     doc.uri = None
 
-client = Client(host=host)
+client = Client(host='grpc://87.191.159.105:51111')
 
 identifier_doc = client.post(
     on='/experimental/finetune',
