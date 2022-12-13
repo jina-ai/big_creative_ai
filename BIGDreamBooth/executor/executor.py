@@ -192,7 +192,7 @@ class BIGDreamBoothExecutor(Executor):
             for sub_dir in os.listdir(self.metamodel_instance_images_dir):
                 shutil.rmtree(os.path.join(self.metamodel_instance_images_dir, sub_dir))
         else:
-            self.user_to_identifiers_and_categories[user_id][identifier] = {}
+            del self.user_to_identifiers_and_categories[user_id][identifier]
             shutil.rmtree(model_path)
         return None
 
