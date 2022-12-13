@@ -239,8 +239,10 @@ class BIGDreamBoothExecutor(Executor):
             for _prev_id in _prev_ids:
                 instance2num_images[_prev_id] = num_category_images_other_cat // 2 // len(_prev_ids)
 
-        self.logger.info(f'for num_category_images={num_category_images}, cur_cat: {cur_cat}, '
-                         f'cat_to_prev_ids: {cat_to_prev_ids}: category2num_images: {category2num_images}')
+        self.logger.info(f'_get_cat_inst_to_num_images_metamodel(num_category_images={num_category_images}, '
+                         f'cur_cat={cur_cat}, cat_to_prev_ids={cat_to_prev_ids}):\n'
+                         f'category2num_images = {category2num_images}\n'
+                         f'instance2num_images = {instance2num_images}')
         return category2num_images, instance2num_images
 
     def _get_prior_preservation_loss_data_dirs_prompts(
