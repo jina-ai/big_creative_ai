@@ -199,6 +199,8 @@ class BIGDreamBoothExecutor(Executor):
         user_id = self._get_user_id(parameters)
         if generate_id:
             identifier = self._get_next_identifier(list(self.user_to_identifiers_and_categories[user_id].keys()))
+        elif user_id in [self.METAMODEL_ID, self.PRE_TRAINED_MODEL_ID]:
+            identifier = None
         else:
             identifier = parameters.get('identifier', '')
             if not identifier or identifier not in list(self.user_to_identifiers_and_categories[user_id].keys()):
