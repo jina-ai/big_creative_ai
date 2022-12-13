@@ -9,8 +9,8 @@ category = 'painting'
 target_model = 'private'
 
 # some custom parameters for the training
-max_train_steps = 200
-learning_rate = 1e-4
+max_train_steps = 300
+learning_rate = 1e-6
 
 
 docs = DocumentArray.from_files(f'{path_to_instance_images}/**')
@@ -21,7 +21,7 @@ for doc in docs:
 client = Client(host='grpc://87.191.159.105:51111')
 
 identifier_doc = client.post(
-    on='/experimental/finetune',
+    on='/finetune',
     inputs=docs,
     parameters={
         'jwt': {

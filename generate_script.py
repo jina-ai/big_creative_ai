@@ -54,7 +54,7 @@ image_docs: DocumentArray = client.post(
     }
 )
 folder_images.mkdir(exist_ok=True, parents=True)
-for i, image_doc in enumerate(image_docs):
+for i, image_doc in enumerate(image_docs[0].chunks):
     image_doc.save_blob_to_file(f"{str(folder_images)}/generation-{i}.png")
 
 print(f"Generations were successful and were saved to {folder_images}")

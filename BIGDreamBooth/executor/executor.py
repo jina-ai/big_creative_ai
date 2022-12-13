@@ -10,7 +10,7 @@ import time
 from collections import defaultdict
 from typing import List, Dict, Tuple
 
-from PIL.Image import Image
+from PIL import Image
 from accelerate import Accelerator
 from accelerate.utils import write_basic_config
 from diffusers import StableDiffusionPipeline
@@ -208,9 +208,8 @@ class BIGDreamBoothExecutor(Executor):
         model_path = self._get_model_dir(user_id, identifier)
         return user_id, identifier, model_path
 
-    @staticmethod
     def _get_cat_inst_to_num_images_metamodel(
-            num_category_images: int, cur_cat: str, cat_to_prev_ids: Dict[str, List[str]]
+            self, num_category_images: int, cur_cat: str, cat_to_prev_ids: Dict[str, List[str]]
     ) -> Tuple[Dict[str, int], Dict[str, int]]:
         num_other_cats = len([_cat for _cat in cat_to_prev_ids.keys() if _cat != cur_cat])
         # half of all images are for the current category, the rest are split evenly among the other categories
@@ -237,6 +236,8 @@ class BIGDreamBoothExecutor(Executor):
             for _prev_id in _prev_ids:
                 instance2num_images[_prev_id] = num_category_images_other_cat // 2 // len(_prev_ids)
 
+        self.logger.info(f'for num_category_images={num_category_images}, cur_cat: {cur_cat}, '
+                         f'cat_to_prev_ids: {cat_to_prev_ids}: category2num_images: {category2num_images}')
         return category2num_images, instance2num_images
 
     def _get_prior_preservation_loss_data_dirs_prompts(
@@ -338,7 +339,7 @@ class BIGDreamBoothExecutor(Executor):
         self.logger.info(f'Using learning rate {learning_rate}, max training steps {max_train_steps} '
                          f'for category {category}')
 
-        user_id, identifier, output_dir = self._get_user_id_identifier_model_path(parameters)
+        user_id, identifier, output_dir = self._get_user_id_identifier_model_path(parameters, generate_id=True)
         assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
         pretrained_model_dir = output_dir if user_id == self.METAMODEL_ID \
             else os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
@@ -362,8 +363,8 @@ class BIGDreamBoothExecutor(Executor):
                 doc.save_blob_to_file(file=os.path.join(instance_data_dir, f'{doc.id}.jpeg'))
             # class data
             pp_data_dirs, pp_prompts = self._get_prior_preservation_loss_data_dirs_prompts(
-                user_id=user_id, identifier=identifier, category=category, num_category_images=max_train_steps,
-                max_train_steps=max_train_steps, tmp_dir=tmp_dir,
+                user_id=user_id, identifier=identifier, category=category, max_train_steps=max_train_steps,
+                tmp_dir=tmp_dir, instance_images=docs,
             )
 
             # execute dreambooth.py
