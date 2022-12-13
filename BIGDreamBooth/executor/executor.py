@@ -113,6 +113,7 @@ class BIGDreamBoothExecutor(Executor):
         self.category_images_dir = os.path.join(self.workspace, 'category_images')
         os.makedirs(self.category_images_dir, exist_ok=True)
         self.metamodel_instance_images_dir = os.path.join(self.workspace, 'metamodel_instance_images')
+        os.makedirs(self.metamodel_instance_images_dir, exist_ok=True)
         download_pretrained_stable_diffusion_model(self.models_dir)
 
         self.user_to_identifiers_and_categories: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
@@ -184,14 +185,14 @@ class BIGDreamBoothExecutor(Executor):
         user_id, identifier, model_path = self._get_user_id_identifier_model_path(parameters, generate_id=False)
         self.logger.info(f'Deleting model {model_path}')
         if user_id == self.METAMODEL_ID:
-            del self.user_to_identifiers_and_categories[user_id]
+            self.user_to_identifiers_and_categories[user_id] = {}
             pipe = StableDiffusionPipeline.from_pretrained(os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR))
             pipe.save_pretrained(model_path)
             # delete all subdirectories of self.metamodel_instance_images_dir
             for sub_dir in os.listdir(self.metamodel_instance_images_dir):
                 shutil.rmtree(os.path.join(self.metamodel_instance_images_dir, sub_dir))
         else:
-            del self.user_to_identifiers_and_categories[user_id][identifier]
+            self.user_to_identifiers_and_categories[user_id][identifier] = {}
             shutil.rmtree(model_path)
         return None
 
