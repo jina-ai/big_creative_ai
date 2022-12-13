@@ -6,12 +6,19 @@ ARG JINA_VERSION=3.12.0
 
 FROM pytorch/pytorch:${TORCH_PACKAGE_VERSION}-cuda${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime
 
-RUN apt-get update && apt-get install --no-install-recommends -y gcc libc6-dev git
+RUN apt-get update && apt-get install --no-install-recommends -y gcc libc6-dev git make build-essential
 
 RUN python3 -m pip install --no-cache-dir jina${JINA_VERSION:+==${JINA_VERSION}}
 
 COPY requirements-gpu.txt requirements-gpu.txt
 RUN pip install --default-timeout=1000 --compile -r requirements-gpu.txt
+
+# fixing NameError: name 'str2optimizer8bit_blockwise' is not defined: https://github.com/TimDettmers/bitsandbytes/issues/62
+# need to build from source
+ENV LD_LIBRARY_PATH=/opt/conda/lib:$LD_LIBRARY_PATH
+ENV CONDA_PREFIX=/opt/conda
+RUN git clone https://github.com/TimDettmers/bitsandbytes.git /data/bitsandbytes/
+RUN cd /data/bitsandbytes && CUDA_VERSION=116 make cuda11x && python setup.py install
 
 COPY . /workdir/
 WORKDIR /workdir

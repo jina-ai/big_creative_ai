@@ -1,0 +1,6 @@
+**/.idea/**/*.*
+**/.idea/*
+.idea
+
+output
+generated_images

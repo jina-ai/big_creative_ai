@@ -60,7 +60,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
         required=False,
-        help="A folder containing the training data of class images.",
+        help="A folder containing the training data of class images. If multiple, separate by comma.",
     )
     parser.add_argument(
         "--instance_prompt",
@@ -73,7 +73,7 @@ def parse_args(input_args=None):
         "--class_prompt",
         type=str,
         default=None,
-        help="The prompt to specify images in the same class as provided instance images.",
+        help="The prompt to specify images in the same class as provided instance images. Multiple, separate by comma.",
     )
     parser.add_argument(
         "--with_prior_preservation",
@@ -382,6 +382,91 @@ class DreamBoothDatasetMultipleInstancesOneClass(Dataset):
         return example
 
 
+class DreamBoothDatasetOneInstanceMultipleClasses(Dataset):
+    """Extends DreamBoothDataset to handle as before one instance but now multiple preservable classes."""
+    def __init__(
+        self,
+        instance_data_root: str,
+        instance_prompt: str,
+        tokenizer,
+        class_data_roots: List[str] = None,
+        class_prompts: List[str] = None,
+        size=512,
+        center_crop=False,
+    ):
+        self.size = size
+        self.center_crop = center_crop
+        self.tokenizer = tokenizer
+
+        self.instance_data_root = Path(instance_data_root)
+        if not self.instance_data_root.exists():
+            raise ValueError("Instance images root doesn't exists.")
+
+        self.instance_images_path = list(Path(instance_data_root).iterdir())
+        self.num_instance_images = len(self.instance_images_path)
+        self.instance_prompt = instance_prompt
+        self._length = self.num_instance_images
+
+        if len(class_data_roots) != len(class_prompts):
+            raise ValueError(f"Need as many images roots (# {len(class_data_roots)}) "
+                             f"as prompts (# {len(class_prompts)})")
+        if class_data_roots is not None:
+            self.class_images_path = []
+            self.class_prompts = []
+            for class_data_root, class_prompt in zip(class_data_roots, class_prompts):
+                class_data_root = Path(class_data_root)
+                if not class_data_root.exists():
+                    raise ValueError(f"Class images root ({class_data_root}) doesn't exists.")
+                _class_images_path = list(Path(class_data_root).iterdir())
+                self.class_prompts.extend([class_prompt for _ in range(len(_class_images_path))])
+                self.class_images_path.extend(_class_images_path)
+            self.num_class_images = len(self.class_images_path)
+            self._length = max(self.num_class_images, self.num_instance_images)
+        else:
+            self.class_images_path = None
+
+        self.image_transforms = transforms.Compose(
+            [
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+
+    def __len__(self):
+        return self._length
+
+    def __getitem__(self, index):
+        example = {}
+        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        if not instance_image.mode == "RGB":
+            instance_image = instance_image.convert("RGB")
+        example["instance_images"] = self.image_transforms(instance_image)
+        example["instance_prompt_ids"] = self.tokenizer(
+            self.instance_prompt,
+            padding="do_not_pad",
+            truncation=True,
+            max_length=self.tokenizer.model_max_length,
+        ).input_ids
+
+        if self.class_images_path:
+            class_index = index % self.num_class_images
+            class_image = Image.open(self.class_images_path[class_index])
+            class_prompt = self.class_prompts[class_index]
+            if not class_image.mode == "RGB":
+                class_image = class_image.convert("RGB")
+            example["class_images"] = self.image_transforms(class_image)
+            example["class_prompt_ids"] = self.tokenizer(
+                class_prompt,
+                padding="do_not_pad",
+                truncation=True,
+                max_length=self.tokenizer.model_max_length,
+            ).input_ids
+
+        return example
+
+
 class PromptDataset(Dataset):
     "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
 
@@ -457,7 +542,7 @@ def main(args):
             pipeline.to(accelerator.device)
 
             for example in tqdm(
-                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                    sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
                 images = pipeline(example["prompt"]).images
 
@@ -557,11 +642,11 @@ def main(args):
 
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
-    train_dataset = DreamBoothDatasetMultipleInstancesOneClass(
-        instance_data_roots=args.instance_data_dir.split(','),
-        instance_prompts=args.instance_prompt.split(','),
-        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
-        class_prompt=args.class_prompt,
+    train_dataset = DreamBoothDatasetOneInstanceMultipleClasses(
+        instance_data_root=args.instance_data_dir,  # .split(','),
+        instance_prompt=args.instance_prompt,  # .split(','),
+        class_data_roots=args.class_data_dir.split(',') if args.with_prior_preservation else None,
+        class_prompts=args.class_prompt.split(','),
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,
