@@ -36,6 +36,8 @@ elif target_model == 'meta':
     folder_images_prefix += f'/metamodel'
 elif target_model == 'pretrained':
     folder_images_prefix += f'/pretrained'
+elif target_model == 'private_meta':
+    folder_images_prefix += f'/private_metamodel'
 else:
     raise ValueError(f"Unknown target_model '{target_model}'")
 folder_images = Path(f"{folder_images_prefix}/{prompt.replace(' ', '-').replace(',', '')}")
