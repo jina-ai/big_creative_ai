@@ -31,6 +31,7 @@ class BIGDreamBoothExecutor(Executor):
     PRE_TRAINDED_MODEL_DIR = 'stable-diffusion-v1-4'
     METAMODEL_ID = 'meta'
     METAMODEL_DIR = 'metamodel'
+    PRIVATE_METAMODEL_ID = 'private_meta'
     RARE_IDENTIFIERS = [
         'sks',
         'lnl',
@@ -112,8 +113,8 @@ class BIGDreamBoothExecutor(Executor):
         os.makedirs(self.models_dir, exist_ok=True)
         self.category_images_dir = os.path.join(self.workspace, 'category_images')
         os.makedirs(self.category_images_dir, exist_ok=True)
-        self.metamodel_instance_images_dir = os.path.join(self.workspace, 'metamodel_instance_images')
-        os.makedirs(self.metamodel_instance_images_dir, exist_ok=True)
+        self.metamodel_instance_images_dir = lambda _user_id: \
+            os.path.join(self.workspace, 'metamodel_instance_images', _user_id)
         download_pretrained_stable_diffusion_model(self.models_dir)
 
         self.user_to_identifiers_and_categories: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
@@ -140,6 +141,8 @@ class BIGDreamBoothExecutor(Executor):
             return os.path.join(self.models_dir, self.METAMODEL_DIR)
         elif user_id == self.PRE_TRAINED_MODEL_ID:
             return os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+        elif user_id.endswith(self.PRIVATE_METAMODEL_ID):
+            return os.path.join(self.models_dir, *user_id.split('-'))
         return os.path.join(self.models_dir, user_id, identifier)
 
     @staticmethod
@@ -151,13 +154,17 @@ class BIGDreamBoothExecutor(Executor):
         target_model = parameters.get('target_model', 'private')
         if target_model == 'private':
             user_id = _get_user_info(parameters['jwt']['token'])['_id']
+        elif target_model == BIGDreamBoothExecutor.PRIVATE_METAMODEL_ID:
+            user_id = _get_user_info(parameters['jwt']['token'])['_id'] + '-' \
+                      + BIGDreamBoothExecutor.PRIVATE_METAMODEL_ID
         elif target_model == BIGDreamBoothExecutor.METAMODEL_ID:
             user_id = BIGDreamBoothExecutor.METAMODEL_ID
         elif target_model == BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID:
             user_id = BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID
         else:
             raise ValueError(f'Unknown target model {target_model}; must be either "private" or '
-                             f'"{BIGDreamBoothExecutor.METAMODEL_ID}" or "{BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID}"')
+                             f'"{BIGDreamBoothExecutor.METAMODEL_ID}" or "{BIGDreamBoothExecutor.PRE_TRAINED_MODEL_ID}'
+                             f' or "{BIGDreamBoothExecutor.PRIVATE_METAMODEL_ID}"')
         return user_id
 
     @secure_request(SecurityLevel.ADMIN, on='/update_rare_identifiers')
@@ -174,6 +181,9 @@ class BIGDreamBoothExecutor(Executor):
             Document(
                 tags={
                     'private': self.user_to_identifiers_and_categories.get(user_id, {}),
+                    self.PRIVATE_METAMODEL_ID: self.user_to_identifiers_and_categories.get(
+                        user_id + '-' + self.PRIVATE_METAMODEL_ID, {}
+                    ),
                     self.METAMODEL_ID: self.user_to_identifiers_and_categories.get(self.METAMODEL_ID)
                 }
             )
@@ -184,23 +194,25 @@ class BIGDreamBoothExecutor(Executor):
         """Resets the model for given model directory."""
         user_id, identifier, model_path = self._get_user_id_identifier_model_path(parameters, generate_id=False)
         self.logger.info(f'Deleting model {model_path}')
-        if user_id == self.METAMODEL_ID:
+        if user_id == self.METAMODEL_ID or user_id.endswith('-' + self.PRIVATE_METAMODEL_ID):
             self.user_to_identifiers_and_categories[user_id] = {}
             pipe = StableDiffusionPipeline.from_pretrained(os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR))
             pipe.save_pretrained(model_path)
             # delete all subdirectories of self.metamodel_instance_images_dir
-            for sub_dir in os.listdir(self.metamodel_instance_images_dir):
-                shutil.rmtree(os.path.join(self.metamodel_instance_images_dir, sub_dir))
+            for sub_dir in os.listdir(self.metamodel_instance_images_dir(user_id)):
+                shutil.rmtree(os.path.join(self.metamodel_instance_images_dir(user_id), sub_dir))
         else:
             del self.user_to_identifiers_and_categories[user_id][identifier]
             shutil.rmtree(model_path)
+        with open(self.user_to_identifiers_and_categories_path, 'w') as f:
+            json.dump(self.user_to_identifiers_and_categories, f)
         return None
 
     def _get_user_id_identifier_model_path(self, parameters: Dict, generate_id: bool) -> Tuple[str, str, str]:
         user_id = self._get_user_id(parameters)
         if generate_id:
             identifier = self._get_next_identifier(list(self.user_to_identifiers_and_categories[user_id].keys()))
-        elif user_id in [self.METAMODEL_ID, self.PRE_TRAINED_MODEL_ID]:
+        elif user_id in [self.METAMODEL_ID, self.PRE_TRAINED_MODEL_ID] or user_id.endswith(self.PRIVATE_METAMODEL_ID):
             identifier = None
         else:
             identifier = parameters.get('identifier', '')
@@ -250,8 +262,8 @@ class BIGDreamBoothExecutor(Executor):
             tmp_dir
     ) -> Tuple[List[str], List[str]]:
         # if metamodel, then save instance images to disk
-        if user_id == self.METAMODEL_ID:
-            _metamodel_instance_data_dir = os.path.join(self.metamodel_instance_images_dir, identifier)
+        if user_id == self.METAMODEL_ID or user_id.endswith(self.PRIVATE_METAMODEL_ID):
+            _metamodel_instance_data_dir = os.path.join(self.metamodel_instance_images_dir(user_id), identifier)
             os.makedirs(_metamodel_instance_data_dir, exist_ok=True)
             for i, doc in enumerate(instance_images):
                 if doc.blob:
@@ -264,7 +276,7 @@ class BIGDreamBoothExecutor(Executor):
                 )
 
         # get quantities needed
-        if user_id == self.METAMODEL_ID:
+        if user_id == self.METAMODEL_ID or user_id.endswith(self.PRIVATE_METAMODEL_ID):
             cat2prev_ids = defaultdict(list)
             instance2category = self.user_to_identifiers_and_categories[user_id]
             for _id, _cat in instance2category.items():
@@ -293,7 +305,7 @@ class BIGDreamBoothExecutor(Executor):
                 for i, doc in enumerate(_category_images):
                     doc.convert_blob_to_image_tensor()
                     doc.save_image_tensor_to_file(
-                        file=os.path.join(_category_data_dir, f'{i}.jpeg'), image_format='jpeg'
+                        file=os.path.join(_category_data_dir, f'{_num_existing_images+i}.jpeg'), image_format='jpeg'
                     )
 
         # copy images to tmp dir
@@ -309,7 +321,7 @@ class BIGDreamBoothExecutor(Executor):
             prompts.append(f"a {_category}")
 
         for _instance, _num_images in instance2num_images.items():
-            _instance_data_dir = os.path.join(self.metamodel_instance_images_dir, _instance)
+            _instance_data_dir = os.path.join(self.metamodel_instance_images_dir(user_id), _instance)
             _tmp_instance_data_dir = os.path.join(tmp_dir, _instance)
             os.makedirs(_tmp_instance_data_dir, exist_ok=True)
             while len(glob.glob(os.path.join(_tmp_instance_data_dir, '*.jpeg'))) < _num_images:
@@ -346,8 +358,13 @@ class BIGDreamBoothExecutor(Executor):
 
         user_id, identifier, output_dir = self._get_user_id_identifier_model_path(parameters, generate_id=True)
         assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
-        pretrained_model_dir = output_dir if user_id == self.METAMODEL_ID \
-            else os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+        if user_id == self.METAMODEL_ID:
+            pretrained_model_dir = output_dir
+        elif user_id.endswith(self.PRIVATE_METAMODEL_ID):
+            pretrained_model_dir = output_dir if os.path.exists(output_dir) else os.path.join(
+                self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+        else:
+            pretrained_model_dir = os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
 
         self.logger.info(f'Finetuning model in {output_dir} model with identifier {identifier} and category {category}')
 
