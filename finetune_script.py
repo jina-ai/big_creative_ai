@@ -1,22 +1,24 @@
 from jina import Client, DocumentArray
 import hubble
 
-path_to_images = '/some/path/to/images'
-class_name = '[class_name]'
+# specify the path to the images
+path_to_instance_images = '/path/to/instance/images'
+# specify the category of the images, this could be e.g. 'painting', 'dog', 'bottle', etc.
+category = 'painting'
+# 'private' for training private model from pretrained model, 'meta' for training metamodel
+target_model = 'private'
 
-# use the first host if accessing from outside Berlin office, else use the second one
-host = 'grpc://87.191.159.105:51111'
-host = 'grpc://192.168.178.31:51111'
-
-target_model = 'own'  # 'own' for training from pretrained model, 'meta' for training metamodel
+# some custom parameters for the training
+max_train_steps = 300
+learning_rate = 1e-6
 
 
-docs = DocumentArray.from_files(f'{path_to_images}/**')
+docs = DocumentArray.from_files(f'{path_to_instance_images}/**')
 for doc in docs:
     doc.load_uri_to_blob()
     doc.uri = None
 
-client = Client(host=host)
+client = Client(host='grpc://87.191.159.105:51111')
 
 identifier_doc = client.post(
     on='/finetune',
@@ -25,8 +27,10 @@ identifier_doc = client.post(
         'jwt': {
             'token': hubble.get_token(),
         },
-        'class_name': class_name,
-        'target_model': target_model
+        'category': category,
+        'target_model': target_model,
+        'learning_rate': learning_rate,
+        'max_train_steps': max_train_steps,
     },
 )
 
