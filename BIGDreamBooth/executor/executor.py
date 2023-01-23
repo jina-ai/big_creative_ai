@@ -395,6 +395,8 @@ class BIGDreamBoothExecutor(Executor):
 
             # execute dreambooth.py
             cur_dir = os.path.abspath(os.path.join(__file__, '..'))
+            if not os.path.exists(os.path.join(cur_dir, 'dreambooth.py')):
+                raise FileNotFoundError(f'Could not find dreambooth.py in {cur_dir}')
             # note this the output and error are switched for accelerate launch dreambooth.py
             cmd_args = [
                 'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
