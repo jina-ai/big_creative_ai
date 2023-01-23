@@ -102,12 +102,15 @@ class BIGDreamBoothExecutor(Executor):
     def __init__(
             self,
             hf_token: str,
+            use_small_batch_size: bool = False,
             *args,
             **kwargs
     ):
         super().__init__(*args, **kwargs)
 
         hf_login(token=hf_token)
+
+        self.use_small_batch_size = use_small_batch_size
 
         self.models_dir = os.path.join(self.workspace, 'models')
         os.makedirs(self.models_dir, exist_ok=True)
@@ -299,13 +302,14 @@ class BIGDreamBoothExecutor(Executor):
                 _category_images = self._generate(
                     num_images=_num_images,
                     prompt=_category,
-                    model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+                    model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR),
+                    batch_size=4 if self.use_small_batch_size else 8
                 )
                 torch.cuda.empty_cache()
                 for i, doc in enumerate(_category_images):
                     doc.convert_blob_to_image_tensor()
                     doc.save_image_tensor_to_file(
-                        file=os.path.join(_category_data_dir, f'{_num_existing_images+i}.jpeg'), image_format='jpeg'
+                        file=os.path.join(_category_data_dir, f'{_num_existing_images + i}.jpeg'), image_format='jpeg'
                     )
 
         # copy images to tmp dir
@@ -401,7 +405,8 @@ class BIGDreamBoothExecutor(Executor):
                 '--with_prior_preservation',
                 "--resolution", "512",
                 "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
-                "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "2",
+                "--max_train_steps", f"{max_train_steps}",
+                "--train_batch_size", "1" if self.use_small_batch_size else "2",
                 "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
             ]
             self.logger.info(f'Executing {" ".join(cmd_args)}')
@@ -409,15 +414,18 @@ class BIGDreamBoothExecutor(Executor):
             output, err = cmd(cmd_args)
             for cmd_ret in [output, err]:
                 if cmd_ret:
-                    error_message = cmd_ret .decode('utf-8')
+                    error_message = cmd_ret.decode('utf-8')
                     if 'error' in error_message.lower():
                         error_message_print = f"----------\nOutput:"
                         for line in error_message.splitlines():
                             error_message_print += '\n' + line
                         error_message_print += '\n----------'
                         print(error_message_print, file=sys.stderr)
-                        raise RuntimeError(f'Error while executing dreambooth.py:'
-                                           f"{err.decode('utf-8').split('ERROR')[-1]}")
+                        raise RuntimeError(
+                            f'Error while executing dreambooth.py:'
+                            f'{" ".join(cmd_args)}\n{error_message_print}'
+                            # f"{err.decode('utf-8').split('ERROR')[-1]}"
+                        )
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
@@ -441,12 +449,17 @@ class BIGDreamBoothExecutor(Executor):
 
         for doc in docs:
             prompt = doc.text.strip()
-            doc.chunks = self._generate(num_images=num_images, model_path=model_path, prompt=prompt)
+            doc.chunks = self._generate(
+                num_images=num_images,
+                model_path=model_path,
+                prompt=prompt,
+                batch_size=4 if self.use_small_batch_size else 8
+            )
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
     @staticmethod
-    def _generate(num_images: int, model_path: str, prompt: str) -> DocumentArray:
+    def _generate(num_images: int, model_path: str, prompt: str, batch_size: int) -> DocumentArray:
         accelerator = Accelerator()
 
         torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
@@ -459,14 +472,14 @@ class BIGDreamBoothExecutor(Executor):
         pipeline.set_progress_bar_config(disable=True)
 
         sample_dataset = PromptDataset(prompt, num_images)
-        sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=8)
+        sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=batch_size)
 
         sample_dataloader = accelerator.prepare(sample_dataloader)
         pipeline.to(accelerator.device)
 
         docs = DocumentArray()
         for example in tqdm(
-            sample_dataloader, desc="Generating images", disable=not accelerator.is_local_main_process
+                sample_dataloader, desc="Generating images", disable=not accelerator.is_local_main_process
         ):
             images = pipeline(example["prompt"]).images
             for image in images:
