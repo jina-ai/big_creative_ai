@@ -407,7 +407,7 @@ class BIGDreamBoothExecutor(Executor):
                 '--with_prior_preservation',
                 "--resolution", "512",
                 "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
-                "--max_train_steps", f"{max_train_steps}",
+                "--max_train_steps", f"{max_train_steps}", "--num_class_images", f"{max_train_steps}",
                 "--train_batch_size", "1" if self.use_small_batch_size else "2",
                 "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
             ]
