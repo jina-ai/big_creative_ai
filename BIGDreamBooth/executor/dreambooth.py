@@ -600,6 +600,7 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="unet",
         revision=args.revision,
+        torch_dtype=torch.float32
     )
 
     vae.requires_grad_(False)
