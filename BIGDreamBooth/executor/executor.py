@@ -131,7 +131,7 @@ class BIGDreamBoothExecutor(Executor):
                 for user_id, identifiers_and_categories in tmp_dict.items():
                     self.user_to_identifiers_and_categories[user_id].update(identifiers_and_categories)
 
-        write_basic_config(mixed_precision='no')
+        write_basic_config(mixed_precision='fp16')
 
     def _get_model_dir(self, user_id: str, identifier: str = None) -> str:
         """Returns the path to the model directory of the user with the given user_id and identifier.
@@ -399,6 +399,7 @@ class BIGDreamBoothExecutor(Executor):
                 raise FileNotFoundError(f'Could not find dreambooth.py in {cur_dir}')
             # note this the output and error are switched for accelerate launch dreambooth.py
             cmd_args = [
+                'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
                 "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
                 "--output_dir", f"{output_dir}",
                 "--instance_data_dir", f"{instance_data_dir}", "--instance_prompt", f"{instance_prompt}",
@@ -412,26 +413,26 @@ class BIGDreamBoothExecutor(Executor):
             ] + parameters.get('dreambooth_args', [])
             self.logger.info(f'Executing {" ".join(cmd_args)}')
             print(f'Executing {" ".join(cmd_args)}')
-            if self.is_colab:
-                # args_parsed = parse_args_db(cmd_args)
-                notebook_launcher(main_db, cmd_args)
-            else:
-                cmd_args = ['accelerate', 'launch', f"{cur_dir}/dreambooth.py",] + cmd_args
-                output, err = cmd(cmd_args)
-                for cmd_ret in [output, err]:
-                    if cmd_ret:
-                        error_message = cmd_ret.decode('utf-8')
-                        if 'error' in error_message.lower():
-                            error_message_print = f"----------\nOutput:"
-                            for line in error_message.splitlines():
-                                error_message_print += '\n' + line
-                            error_message_print += '\n----------'
-                            print(error_message_print, file=sys.stderr)
-                            raise RuntimeError(
-                                f'Error while executing dreambooth.py:'
-                                f'{" ".join(cmd_args)}\n{error_message_print}'
-                                # f"{err.decode('utf-8').split('ERROR')[-1]}"
-                            )
+            # if self.is_colab:
+            #     # args_parsed = parse_args_db(cmd_args)
+            #     notebook_launcher(main_db, cmd_args)
+            # else:
+            # cmd_args = ['accelerate', 'launch', f"{cur_dir}/dreambooth.py",] + cmd_args
+            output, err = cmd(cmd_args)
+            for cmd_ret in [output, err]:
+                if cmd_ret:
+                    error_message = cmd_ret.decode('utf-8')
+                    if 'error' in error_message.lower():
+                        error_message_print = f"----------\nOutput:"
+                        for line in error_message.splitlines():
+                            error_message_print += '\n' + line
+                        error_message_print += '\n----------'
+                        print(error_message_print, file=sys.stderr)
+                        raise RuntimeError(
+                            f'Error while executing dreambooth.py:'
+                            f'{" ".join(cmd_args)}\n{error_message_print}'
+                            # f"{err.decode('utf-8').split('ERROR')[-1]}"
+                        )
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
