@@ -11,7 +11,7 @@ from collections import defaultdict
 from typing import List, Dict, Tuple
 
 from PIL import Image
-from accelerate import Accelerator
+from accelerate import Accelerator, notebook_launcher
 from accelerate.utils import write_basic_config
 from diffusers import StableDiffusionPipeline
 from docarray import Document
@@ -21,7 +21,7 @@ import torch
 from tqdm import tqdm
 
 from .auth import NOWAuthExecutor as Executor, secure_request, SecurityLevel, _get_user_info
-from .dreambooth import PromptDataset
+from .dreambooth import PromptDataset, parse_args as parse_args_db, main as main_db
 
 
 class BIGDreamBoothExecutor(Executor):
@@ -102,7 +102,7 @@ class BIGDreamBoothExecutor(Executor):
     def __init__(
             self,
             hf_token: str,
-            use_small_batch_size: bool = False,
+            is_colab: bool = False,
             *args,
             **kwargs
     ):
@@ -110,7 +110,7 @@ class BIGDreamBoothExecutor(Executor):
 
         hf_login(token=hf_token)
 
-        self.use_small_batch_size = use_small_batch_size
+        self.is_colab = is_colab
 
         self.models_dir = os.path.join(self.workspace, 'models')
         os.makedirs(self.models_dir, exist_ok=True)
@@ -303,7 +303,7 @@ class BIGDreamBoothExecutor(Executor):
                     num_images=_num_images,
                     prompt=_category,
                     model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR),
-                    batch_size=4 if self.use_small_batch_size else 8
+                    batch_size=4 if self.is_colab else 8
                 )
                 torch.cuda.empty_cache()
                 for i, doc in enumerate(_category_images):
@@ -399,7 +399,6 @@ class BIGDreamBoothExecutor(Executor):
                 raise FileNotFoundError(f'Could not find dreambooth.py in {cur_dir}')
             # note this the output and error are switched for accelerate launch dreambooth.py
             cmd_args = [
-                'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
                 "--pretrained_model_name_or_path", f"{pretrained_model_dir}",
                 "--output_dir", f"{output_dir}",
                 "--instance_data_dir", f"{instance_data_dir}", "--instance_prompt", f"{instance_prompt}",
@@ -408,26 +407,31 @@ class BIGDreamBoothExecutor(Executor):
                 "--resolution", "512",
                 "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
                 "--max_train_steps", f"{max_train_steps}", "--num_class_images", f"{max_train_steps}",
-                "--train_batch_size", "1" if self.use_small_batch_size else "2",
+                "--train_batch_size", "1" if self.is_colab else "2",
                 "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
             ]
             self.logger.info(f'Executing {" ".join(cmd_args)}')
             print(f'Executing {" ".join(cmd_args)}')
-            output, err = cmd(cmd_args)
-            for cmd_ret in [output, err]:
-                if cmd_ret:
-                    error_message = cmd_ret.decode('utf-8')
-                    if 'error' in error_message.lower():
-                        error_message_print = f"----------\nOutput:"
-                        for line in error_message.splitlines():
-                            error_message_print += '\n' + line
-                        error_message_print += '\n----------'
-                        print(error_message_print, file=sys.stderr)
-                        raise RuntimeError(
-                            f'Error while executing dreambooth.py:'
-                            f'{" ".join(cmd_args)}\n{error_message_print}'
-                            # f"{err.decode('utf-8').split('ERROR')[-1]}"
-                        )
+            if self.is_colab:
+                args_parsed = parse_args_db(cmd_args)
+                notebook_launcher(main_db, args_parsed)
+            else:
+                cmd_args = ['accelerate', 'launch', f"{cur_dir}/dreambooth.py",] + cmd_args
+                output, err = cmd(cmd_args)
+                for cmd_ret in [output, err]:
+                    if cmd_ret:
+                        error_message = cmd_ret.decode('utf-8')
+                        if 'error' in error_message.lower():
+                            error_message_print = f"----------\nOutput:"
+                            for line in error_message.splitlines():
+                                error_message_print += '\n' + line
+                            error_message_print += '\n----------'
+                            print(error_message_print, file=sys.stderr)
+                            raise RuntimeError(
+                                f'Error while executing dreambooth.py:'
+                                f'{" ".join(cmd_args)}\n{error_message_print}'
+                                # f"{err.decode('utf-8').split('ERROR')[-1]}"
+                            )
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
@@ -455,7 +459,7 @@ class BIGDreamBoothExecutor(Executor):
                 num_images=num_images,
                 model_path=model_path,
                 prompt=prompt,
-                batch_size=4 if self.use_small_batch_size else 8
+                batch_size=4 if self.is_colab else 8
             )
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
