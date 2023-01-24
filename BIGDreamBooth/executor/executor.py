@@ -515,7 +515,7 @@ def download_pretrained_stable_diffusion_model(model_dir: str, sd_version: str =
     if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
         BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
     ]):
-        pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True)
+        pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True, revision="fp16")
         for _dir in [
             BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
         ]:
