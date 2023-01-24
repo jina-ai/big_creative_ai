@@ -6,11 +6,6 @@ ftfy
 tensorboard
 modelcards
 markupsafe==2.0.1
-
-
 bitsandbytes==0.35.0
 gradio
 natsort
-
-git+https://github.com/ShivamShrirao/diffusers
---no-deps -q https://github.com/brian6091/xformers-wheels/releases/download/0.0.15.dev0%2B4c06c79/xformers-0.0.15.dev0+4c06c79.d20221205-cp38-cp38-linux_x86_64.whl
