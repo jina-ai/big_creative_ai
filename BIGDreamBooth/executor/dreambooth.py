@@ -827,7 +827,7 @@ def main(args):
                 print("stepped in optimizer")
                 lr_scheduler.step()
                 print("stepped in lr scheduler")
-                optimizer.zero_grad(set_to_non=True)
+                optimizer.zero_grad(set_to_none=True)
                 print("zeroed with optimizer")
 
             # Checks if the accelerator has performed an optimization step behind the scenes
