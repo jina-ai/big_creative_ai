@@ -681,8 +681,21 @@ def main(args):
         return batch
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, num_workers=1
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, pin_memory=True
     )
+
+    weight_dtype = torch.float32
+    if args.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif args.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # Move text_encode and vae to gpu.
+    # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # as these models are only used for inference, keeping weights in full precision is not required.
+    vae.to(accelerator.device, dtype=weight_dtype)
+    if not args.train_text_encoder:
+        text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -707,18 +720,18 @@ def main(args):
             unet, optimizer, train_dataloader, lr_scheduler
         )
 
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
-
-    # Move text_encode and vae to gpu.
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
-    vae.to(accelerator.device, dtype=weight_dtype)
-    if not args.train_text_encoder:
-        text_encoder.to(accelerator.device, dtype=weight_dtype)
+    # weight_dtype = torch.float32
+    # if accelerator.mixed_precision == "fp16":
+    #     weight_dtype = torch.float16
+    # elif accelerator.mixed_precision == "bf16":
+    #     weight_dtype = torch.bfloat16
+    #
+    # # Move text_encode and vae to gpu.
+    # # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # # as these models are only used for inference, keeping weights in full precision is not required.
+    # vae.to(accelerator.device, dtype=weight_dtype)
+    # if not args.train_text_encoder:
+    #     text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -753,12 +766,14 @@ def main(args):
         unet.train()
         if args.train_text_encoder:
             text_encoder.train()
+        print("loading batch")
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 with torch.no_grad():
                     latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                     latents = latents * 0.18215
+                    print("got latents")
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -770,13 +785,16 @@ def main(args):
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                print("added noise")
 
                 # Get the text embedding for conditioning
                 with text_enc_context:
                     encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                    print("got text conditioning")
 
                 # Predict the noise residual
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                print("got noise pred")
 
                 if args.with_prior_preservation:
                     # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.
@@ -793,8 +811,10 @@ def main(args):
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
                     loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
+                print("got loss")
 
                 accelerator.backward(loss)
+                print("did backward")
                 # commented the following lines out for fp16 training
                 # if accelerator.sync_gradients:
                 #     params_to_clip = (
@@ -804,8 +824,11 @@ def main(args):
                 #     )
                 #     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
+                print("stepped in optimizer")
                 lr_scheduler.step()
+                print("stepped in lr scheduler")
                 optimizer.zero_grad(set_to_non=True)
+                print("zeroed with optimizer")
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
