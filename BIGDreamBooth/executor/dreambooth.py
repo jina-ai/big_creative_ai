@@ -832,7 +832,7 @@ def main(args):
 
 
 def main_given_list(*args):
-    args = parse_args(*args)
+    args = parse_args(args)
     main(args)
 
 
