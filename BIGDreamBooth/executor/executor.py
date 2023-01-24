@@ -422,17 +422,17 @@ class BIGDreamBoothExecutor(Executor):
             for cmd_ret in [output, err]:
                 if cmd_ret:
                     error_message = cmd_ret.decode('utf-8')
-                    if 'error' in error_message.lower():
-                        error_message_print = f"----------\nOutput:"
-                        for line in error_message.splitlines():
-                            error_message_print += '\n' + line
-                        error_message_print += '\n----------'
-                        print(error_message_print, file=sys.stderr)
-                        raise RuntimeError(
-                            f'Error while executing dreambooth.py:'
-                            f'{" ".join(cmd_args)}\n{error_message_print}'
-                            # f"{err.decode('utf-8').split('ERROR')[-1]}"
-                        )
+                    # if 'error' in error_message.lower():
+                    error_message_print = f"----------\nOutput:"
+                    for line in error_message.splitlines():
+                        error_message_print += '\n' + line
+                    error_message_print += '\n----------'
+                    print(error_message_print, file=sys.stderr)
+                        # raise RuntimeError(
+                        #     f'Error while executing dreambooth.py:'
+                        #     f'{" ".join(cmd_args)}\n{error_message_print}'
+                        #     # f"{err.decode('utf-8').split('ERROR')[-1]}"
+                        # )
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
