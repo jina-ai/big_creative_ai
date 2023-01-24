@@ -831,6 +831,11 @@ def main(args):
     accelerator.end_training()
 
 
+def main_given_list(*args):
+    args = parse_args(*args)
+    main(args)
+
+
 if __name__ == "__main__":
     args = parse_args()
     main(args)

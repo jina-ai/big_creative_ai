@@ -21,7 +21,7 @@ import torch
 from tqdm import tqdm
 
 from .auth import NOWAuthExecutor as Executor, secure_request, SecurityLevel, _get_user_info
-from .dreambooth import PromptDataset, parse_args as parse_args_db, main as main_db
+from .dreambooth import PromptDataset, parse_args as parse_args_db, main_given_list as main_db
 
 
 class BIGDreamBoothExecutor(Executor):
@@ -413,8 +413,8 @@ class BIGDreamBoothExecutor(Executor):
             self.logger.info(f'Executing {" ".join(cmd_args)}')
             print(f'Executing {" ".join(cmd_args)}')
             if self.is_colab:
-                args_parsed = parse_args_db(cmd_args)
-                notebook_launcher(main_db, args_parsed)
+                # args_parsed = parse_args_db(cmd_args)
+                notebook_launcher(main_db, cmd_args)
             else:
                 cmd_args = ['accelerate', 'launch', f"{cur_dir}/dreambooth.py",] + cmd_args
                 output, err = cmd(cmd_args)
