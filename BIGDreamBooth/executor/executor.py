@@ -408,8 +408,8 @@ class BIGDreamBoothExecutor(Executor):
                 "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
                 "--max_train_steps", f"{max_train_steps}", "--num_class_images", f"{max_train_steps}",
                 "--train_batch_size", "1" if self.is_colab else "2",
-                "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
-            ]
+                # "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
+            ] + parameters.get('dreambooth_args', [])
             self.logger.info(f'Executing {" ".join(cmd_args)}')
             print(f'Executing {" ".join(cmd_args)}')
             if self.is_colab:
