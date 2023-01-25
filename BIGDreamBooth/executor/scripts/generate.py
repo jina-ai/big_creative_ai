@@ -35,12 +35,7 @@ def _generate(save_dir: str, num_images: int, model_path: str, prompt: str, batc
     for example in tqdm(sample_dataloader, desc="Generating images", disable=not accelerator.is_local_main_process):
         images = pipeline(example["prompt"]).images
         for image in images:
-            with io.BytesIO() as buffer:
-                # save image as jpeg to save space with quality 95
-                image.save(buffer, format="JPEG", quality=95)
-                # save image to file
-                with open(f"{save_dir}/{cnt}.jpg", "wb") as f:
-                    f.write(buffer.getvalue())
+            image.save(os.path.join(save_dir, f"{cnt}.jpg"), format="JPEG", quality=95)
             cnt += 1
 
 

@@ -304,13 +304,10 @@ class BIGDreamBoothExecutor(Executor):
             _num_existing_images = len(glob.glob(os.path.join(_category_data_dir, '*.jpeg')))
             if _num_existing_images < _num_images:
                 self.logger.info(f'Generating {_num_images - _num_existing_images} images for category {_category}')
-                model_path = os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
-                if not os.path.exists(model_path):
-                    model_path = 'CompVis/stable-diffusion-v1-4'
                 _category_images = self._generate(
                     num_images=_num_images,
                     prompt=_category,
-                    model_path=model_path,
+                    model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR),
                     batch_size=4 if self.is_colab else 8,
                     revision='fp16' if self.is_colab else None
                 )
@@ -371,12 +368,12 @@ class BIGDreamBoothExecutor(Executor):
         user_id, identifier, output_dir = self._get_user_id_identifier_model_path(parameters, generate_id=True)
         assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
         if user_id == self.METAMODEL_ID:
-            pretrained_model_dir = output_dir if os.path.exists(output_dir) else 'CompVis/stable-diffusion-v1-4'
+            pretrained_model_dir = output_dir
         elif user_id.endswith(self.PRIVATE_METAMODEL_ID):
-            pretrained_model_dir = output_dir if os.path.exists(output_dir) else 'CompVis/stable-diffusion-v1-4'
+            pretrained_model_dir = output_dir if os.path.exists(output_dir) else os.path.join(
+                 self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
         else:
-            # pretrained_model_dir = os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
-            pretrained_model_dir = 'CompVis/stable-diffusion-v1-4'
+            pretrained_model_dir = os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
 
         self.logger.info(f'Finetuning model in {output_dir} model with identifier {identifier} and category {category}')
 
@@ -453,8 +450,6 @@ class BIGDreamBoothExecutor(Executor):
         """
         num_images = int(parameters.get('num_images', 1))
         user_id, identifier, model_path = self._get_user_id_identifier_model_path(parameters, generate_id=False)
-        if not os.path.exists(model_path):
-            model_path = 'CompVis/stable-diffusion-v1-4'
 
         for doc in docs:
             prompt = doc.text.strip()
@@ -485,7 +480,11 @@ class BIGDreamBoothExecutor(Executor):
             output, err = cmd(cmd_args)
             handle_error_messages_from_cmd([output, err], cmd_args)
             # load images
-            return DocumentArray.from_files(os.path.join(tmp_dir, '**'))
+            docs = DocumentArray.from_files(os.path.join(tmp_dir, '**'))
+            for doc in docs:
+                doc.load_uri_to_blob()
+                doc.uri = None
+        return docs
 
     @staticmethod
     def _get_next_identifier(used_identifiers: List[str]) -> str:
