@@ -119,11 +119,12 @@ class BIGDreamBoothExecutor(Executor):
         os.makedirs(self.category_images_dir, exist_ok=True)
         self.metamodel_instance_images_dir = lambda _user_id: \
             os.path.join(self.workspace, 'metamodel_instance_images', _user_id)
-        download_pretrained_stable_diffusion_model(
-            self.models_dir,
-            sd_model='runwayml/stable-diffusion-v1-5' if self.is_colab else 'CompVis/stable-diffusion-v1-4',
-            revision='fp16' if self.is_colab else None
-        )
+        if not self.is_colab:
+            download_pretrained_stable_diffusion_model(
+                self.models_dir,
+                sd_model='runwayml/stable-diffusion-v1-5' if self.is_colab else 'CompVis/stable-diffusion-v1-4',
+                revision='fp16' if self.is_colab else None
+            )
 
         self.user_to_identifiers_and_categories: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
         self.user_to_identifiers_and_categories_path = os.path.join(
@@ -372,12 +373,12 @@ class BIGDreamBoothExecutor(Executor):
         user_id, identifier, output_dir = self._get_user_id_identifier_model_path(parameters, generate_id=True)
         assert user_id != self.PRE_TRAINED_MODEL_ID, f"User id {user_id} is not allowed"
         if user_id == self.METAMODEL_ID:
-            pretrained_model_dir = output_dir
+            pretrained_model_dir = output_dir if os.path.exists(output_dir) else 'CompVis/stable-diffusion-v1-4'
         elif user_id.endswith(self.PRIVATE_METAMODEL_ID):
-            pretrained_model_dir = output_dir if os.path.exists(output_dir) else os.path.join(
-                self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+            pretrained_model_dir = output_dir if os.path.exists(output_dir) else 'CompVis/stable-diffusion-v1-4'
         else:
-            pretrained_model_dir = os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+            # pretrained_model_dir = os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+            pretrained_model_dir = 'CompVis/stable-diffusion-v1-4'
 
         self.logger.info(f'Finetuning model in {output_dir} model with identifier {identifier} and category {category}')
 
@@ -473,6 +474,8 @@ class BIGDreamBoothExecutor(Executor):
         """
         num_images = int(parameters.get('num_images', 1))
         user_id, identifier, model_path = self._get_user_id_identifier_model_path(parameters, generate_id=False)
+        if not os.path.exists(model_path):
+            model_path = 'CompVis/stable-diffusion-v1-4'
 
         for doc in docs:
             prompt = doc.text.strip()
