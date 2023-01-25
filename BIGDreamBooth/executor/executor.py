@@ -422,22 +422,22 @@ class BIGDreamBoothExecutor(Executor):
             print(f'Executing {" ".join(cmd_args)}')
             output, err = cmd(cmd_args)
             # checking for errors
-            outputs_to_check = [err]
-            if not self.is_colab:
-                outputs_to_check.append(output)
+            outputs_to_check = [output, err]
+            # if not self.is_colab:
+            #     outputs_to_check.append(output)
             for cmd_ret in outputs_to_check:
                 if cmd_ret:
                     error_message = cmd_ret.decode('utf-8')
-                    if 'error' in error_message.lower():
-                        error_message_print = f"----------\nOutput:"
-                        for line in error_message.splitlines():
-                            error_message_print += '\n' + line
-                        error_message_print += '\n----------'
-                        print(error_message_print, file=sys.stderr)
-                        raise RuntimeError(
-                            f'Error while executing dreambooth.py:'
-                            f'{" ".join(cmd_args)}\n{error_message_print}'
-                        )
+                    # if 'error' in error_message.lower():
+                    error_message_print = f"----------\nOutput:"
+                    for line in error_message.splitlines():
+                        error_message_print += '\n' + line
+                    error_message_print += '\n----------'
+                    print(error_message_print, file=sys.stderr)
+                    # raise RuntimeError(
+                    #     f'Error while executing dreambooth.py:'
+                    #     f'{" ".join(cmd_args)}\n{error_message_print}'
+                    # )
 
             torch.cuda.empty_cache()
             gc.collect()
