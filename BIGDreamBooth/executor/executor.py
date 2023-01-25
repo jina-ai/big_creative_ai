@@ -11,7 +11,7 @@ from collections import defaultdict
 from typing import List, Dict, Tuple
 
 from PIL import Image
-from accelerate import Accelerator, notebook_launcher
+from accelerate import Accelerator
 from accelerate.utils import write_basic_config
 from diffusers import StableDiffusionPipeline
 from docarray import Document
@@ -21,7 +21,7 @@ import torch
 from tqdm import tqdm
 
 from .auth import NOWAuthExecutor as Executor, secure_request, SecurityLevel, _get_user_info
-from .dreambooth import PromptDataset, parse_args as parse_args_db, main_given_list as main_db
+from .dreambooth import PromptDataset
 
 
 class BIGDreamBoothExecutor(Executor):
@@ -118,7 +118,7 @@ class BIGDreamBoothExecutor(Executor):
         os.makedirs(self.category_images_dir, exist_ok=True)
         self.metamodel_instance_images_dir = lambda _user_id: \
             os.path.join(self.workspace, 'metamodel_instance_images', _user_id)
-        download_pretrained_stable_diffusion_model(self.models_dir)
+        download_pretrained_stable_diffusion_model(self.models_dir, revision='fp16' if self.is_colab else None)
 
         self.user_to_identifiers_and_categories: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
         self.user_to_identifiers_and_categories_path = os.path.join(
@@ -131,7 +131,7 @@ class BIGDreamBoothExecutor(Executor):
                 for user_id, identifiers_and_categories in tmp_dict.items():
                     self.user_to_identifiers_and_categories[user_id].update(identifiers_and_categories)
 
-        write_basic_config(mixed_precision='fp16')
+        write_basic_config(mixed_precision='fp16' if self.is_colab else 'no')
 
     def _get_model_dir(self, user_id: str, identifier: str = None) -> str:
         """Returns the path to the model directory of the user with the given user_id and identifier.
@@ -510,12 +510,17 @@ class BIGDreamBoothExecutor(Executor):
         raise RuntimeError('No identifier left for this user. Please, inform the administrator.')
 
 
-def download_pretrained_stable_diffusion_model(model_dir: str, sd_version: str = 'stable-diffusion-v1-4'):
+def download_pretrained_stable_diffusion_model(
+        model_dir: str, sd_version: str = 'stable-diffusion-v1-4', revision: str = None
+):
     """Downloads pretrained stable diffusion model."""
     if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
         BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
     ]):
-        pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True, revision="fp16")
+        pipe_kwargs = {'use_auth_token': True}
+        if revision:
+            pipe_kwargs['revision'] = revision
+        pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", **pipe_kwargs)
         for _dir in [
             BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
         ]:
