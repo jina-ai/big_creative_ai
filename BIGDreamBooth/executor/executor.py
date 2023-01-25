@@ -495,7 +495,6 @@ class BIGDreamBoothExecutor(Executor):
 
         sample_dataloader = accelerator.prepare(sample_dataloader)
         pipeline.to(accelerator.device)
-        print("accelerator.device", accelerator.device)
 
         docs = DocumentArray()
         for example in tqdm(
@@ -533,14 +532,19 @@ def download_pretrained_stable_diffusion_model(
     if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
         BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
     ]):
+        # use accelerator to free memory
+        accelerator = Accelerator()
         pipe = StableDiffusionPipeline.from_pretrained(
             f"CompVis/{sd_version}", use_auth_token=True, revision=revision, torch_dtype=torch.float16
-        ).to('cuda')
+        )
+        pipe.to(accelerator.device)
         for _dir in [
             BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
         ]:
             pipe.save_pretrained(os.path.join(model_dir, _dir))
+
         del pipe
+        accelerator.free_memory()
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
