@@ -1,5 +1,4 @@
 import inspect
-import io
 import os
 
 import torch
