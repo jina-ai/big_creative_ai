@@ -586,23 +586,27 @@ def main(args):
             revision=args.revision,
         )
 
+    print("loaded tokenizer")
     # Load models and create wrapper for stable diffusion
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
         revision=args.revision,
     )
+    print("loaded text encoder")
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
         revision=args.revision,
     )
+    print("loaded vae")
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="unet",
         revision=args.revision,
         torch_dtype=torch.float32
     )
+    print("loaded unet")
 
     vae.requires_grad_(False)
     if not args.train_text_encoder:
@@ -641,6 +645,7 @@ def main(args):
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
+    print("created optimizer")
 
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
@@ -653,6 +658,7 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
     )
+    print("created train dataset")
 
     def collate_fn(examples):
         input_ids = [example["instance_prompt_ids"] for example in examples]
@@ -683,6 +689,7 @@ def main(args):
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, pin_memory=True
     )
+    print("created train dataloader")
 
     weight_dtype = torch.float32
     if args.mixed_precision == "fp16":
@@ -696,6 +703,7 @@ def main(args):
     vae.to(accelerator.device, dtype=weight_dtype)
     if not args.train_text_encoder:
         text_encoder.to(accelerator.device, dtype=weight_dtype)
+    print(f"moved vae and text encoder to device {accelerator.device} and dtype {weight_dtype}")
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -719,6 +727,7 @@ def main(args):
         unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
             unet, optimizer, train_dataloader, lr_scheduler
         )
+    print("prepared model, optimizer, dataloader, and lr_scheduler")
 
     # weight_dtype = torch.float32
     # if accelerator.mixed_precision == "fp16":
@@ -762,16 +771,19 @@ def main(args):
     global_step = 0
 
     text_enc_context = nullcontext() if args.train_text_encoder else torch.no_grad()
+    print("lets go")
     for epoch in range(args.num_train_epochs):
         unet.train()
         if args.train_text_encoder:
             text_encoder.train()
         for step, batch in enumerate(train_dataloader):
+            print("step", step)
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 with torch.no_grad():
                     latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                     latents = latents * 0.18215
+                    print("latents", latents.shape)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -783,13 +795,16 @@ def main(args):
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                print("noisy_latents", noisy_latents.shape)
 
                 # Get the text embedding for conditioning
                 with text_enc_context:
                     encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                    print("encoder_hidden_states", encoder_hidden_states.shape)
 
                 # Predict the noise residual
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                print("noise_pred", noise_pred.shape)
 
                 if args.with_prior_preservation:
                     # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.
@@ -806,9 +821,12 @@ def main(args):
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
                     loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
+                print("loss", loss)
 
                 accelerator.backward(loss)
+                print("backwards")
                 if args.mixed_precision != "fp16" and accelerator.sync_gradients:
+                    print("syncing gradients")
                     params_to_clip = (
                         itertools.chain(unet.parameters(), text_encoder.parameters())
                         if args.train_text_encoder
@@ -816,8 +834,11 @@ def main(args):
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
+                print("optimizer step")
                 lr_scheduler.step()
+                print("lr scheduler step")
                 optimizer.zero_grad(set_to_none=True)
+                print("optimizer zero grad")
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
