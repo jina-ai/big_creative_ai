@@ -395,8 +395,6 @@ class BIGDreamBoothExecutor(Executor):
 
             # execute dreambooth.py
             cur_dir = os.path.abspath(os.path.join(__file__, '..'))
-            if not os.path.exists(os.path.join(cur_dir, 'dreambooth.py')):
-                raise FileNotFoundError(f'Could not find dreambooth.py in {cur_dir}')
             # note this the output and error are switched for accelerate launch dreambooth.py
             cmd_args = [
                 'accelerate', 'launch', f"{cur_dir}/dreambooth.py",
@@ -408,31 +406,37 @@ class BIGDreamBoothExecutor(Executor):
                 "--resolution", "512",
                 "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
                 "--max_train_steps", f"{max_train_steps}", "--num_class_images", f"{max_train_steps}",
-                "--train_batch_size", "1" if self.is_colab else "2",
-                # "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
-            ] + parameters.get('dreambooth_args', [])
+                "--use_8bit_adam",
+            ]
+            if self.is_colab:
+                cmd_args += [
+                    "--train_batch_size", "1", "--gradient_accumulation_steps", "1", "--mixed_precision", "fp16",
+                    '--revision', 'fp16'
+                ]
+            else:
+                cmd_args += [
+                    "--train_batch_size", "2", "--gradient_accumulation_steps", "2", "--gradient_checkpointing"
+                ]
             self.logger.info(f'Executing {" ".join(cmd_args)}')
             print(f'Executing {" ".join(cmd_args)}')
-            # if self.is_colab:
-            #     # args_parsed = parse_args_db(cmd_args)
-            #     notebook_launcher(main_db, cmd_args)
-            # else:
-            # cmd_args = ['accelerate', 'launch', f"{cur_dir}/dreambooth.py",] + cmd_args
             output, err = cmd(cmd_args)
-            for cmd_ret in [output, err]:
+            # checking for errors
+            outputs_to_check = [err]
+            if not self.is_colab:
+                outputs_to_check.append(output)
+            for cmd_ret in outputs_to_check:
                 if cmd_ret:
                     error_message = cmd_ret.decode('utf-8')
-                    # if 'error' in error_message.lower():
-                    error_message_print = f"----------\nOutput:"
-                    for line in error_message.splitlines():
-                        error_message_print += '\n' + line
-                    error_message_print += '\n----------'
-                    print(error_message_print, file=sys.stderr)
-                        # raise RuntimeError(
-                        #     f'Error while executing dreambooth.py:'
-                        #     f'{" ".join(cmd_args)}\n{error_message_print}'
-                        #     # f"{err.decode('utf-8').split('ERROR')[-1]}"
-                        # )
+                    if 'error' in error_message.lower():
+                        error_message_print = f"----------\nOutput:"
+                        for line in error_message.splitlines():
+                            error_message_print += '\n' + line
+                        error_message_print += '\n----------'
+                        print(error_message_print, file=sys.stderr)
+                        raise RuntimeError(
+                            f'Error while executing dreambooth.py:'
+                            f'{" ".join(cmd_args)}\n{error_message_print}'
+                        )
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
