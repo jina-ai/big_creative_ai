@@ -531,6 +531,9 @@ def download_pretrained_stable_diffusion_model(
             BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
         ]:
             pipe.save_pretrained(os.path.join(model_dir, _dir))
+        del pipe
+        torch.cuda.empty_cache()
+        gc.collect()
 
 
 def cmd(command, std_output=False, wait=True):
