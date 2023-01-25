@@ -121,7 +121,7 @@ class BIGDreamBoothExecutor(Executor):
             os.path.join(self.workspace, 'metamodel_instance_images', _user_id)
         download_pretrained_stable_diffusion_model(
             self.models_dir,
-            sd_model='runwayml/stable-diffusion-v1-4' if self.is_colab else 'CompVis/stable-diffusion-v1-4',
+            sd_model='runwayml/stable-diffusion-v1-5' if self.is_colab else 'CompVis/stable-diffusion-v1-4',
             revision='fp16' if self.is_colab else None
         )
 
