@@ -303,7 +303,8 @@ class BIGDreamBoothExecutor(Executor):
                     num_images=_num_images,
                     prompt=_category,
                     model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR),
-                    batch_size=4 if self.is_colab else 8
+                    batch_size=4 if self.is_colab else 8,
+                    revision='fp16' if self.is_colab else None
                 )
                 torch.cuda.empty_cache()
                 for i, doc in enumerate(_category_images):
@@ -464,13 +465,13 @@ class BIGDreamBoothExecutor(Executor):
                 num_images=num_images,
                 model_path=model_path,
                 prompt=prompt,
-                batch_size=4 if self.is_colab else 8
+                batch_size=4 if self.is_colab else 8,
+                revision='fp16' if self.is_colab else None
             )
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
 
     @staticmethod
-    def _generate(num_images: int, model_path: str, prompt: str, batch_size: int) -> DocumentArray:
+    def _generate(num_images: int, model_path: str, prompt: str, batch_size: int, revision=None) -> DocumentArray:
         accelerator = Accelerator()
 
         torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
@@ -478,8 +479,8 @@ class BIGDreamBoothExecutor(Executor):
             model_path,
             torch_dtype=torch_dtype,
             safety_checker=None,
+            revision=revision,
         )
-        pipeline.safetyer_checker = None
         pipeline.set_progress_bar_config(disable=True)
 
         sample_dataset = PromptDataset(prompt, num_images)
@@ -500,8 +501,7 @@ class BIGDreamBoothExecutor(Executor):
                     docs.append(Document(blob=buffer.getvalue()))
 
         del pipeline
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
 
         return docs
 
@@ -521,10 +521,7 @@ def download_pretrained_stable_diffusion_model(
     if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
         BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
     ]):
-        pipe_kwargs = {'use_auth_token': True}
-        if revision:
-            pipe_kwargs['revision'] = revision
-        pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", **pipe_kwargs)
+        pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True, revision=revision)
         for _dir in [
             BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
         ]:
