@@ -1,18 +1,17 @@
+import inspect
 import os
 
 import torch
 from diffusers import StableDiffusionPipeline
 
 
-# if I run this script, it won't find BIGDreamBoothExecutor, what can I do?
-# I tried to add the path to the sys.path, but it didn't work
-# I also tried to add the path to the PYTHONPATH, but it didn't work
-
 # add to the sys.path
 import sys
-cur_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(cur_dir, ''))
-
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+parentdir = os.path.dirname(parentdir)
+parentdir = os.path.dirname(parentdir)
+sys.path.insert(0, parentdir)
 
 from BIGDreamBooth.executor import BIGDreamBoothExecutor
 

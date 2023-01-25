@@ -1,3 +1,4 @@
+import inspect
 import io
 import os
 
@@ -6,9 +7,14 @@ from accelerate import Accelerator
 from diffusers import StableDiffusionPipeline
 from tqdm import tqdm
 
+# add to the sys.path
 import sys
-cur_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(cur_dir, ''))
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+parentdir = os.path.dirname(parentdir)
+parentdir = os.path.dirname(parentdir)
+sys.path.insert(0, parentdir)
+
 
 from BIGDreamBooth.executor.dreambooth import PromptDataset
 
