@@ -429,10 +429,12 @@ class BIGDreamBoothExecutor(Executor):
             outputs_to_check = [output, err]
             # if not self.is_colab:
             #     outputs_to_check.append(output)
-            for cmd_ret in outputs_to_check:
+            error_message_print = f"----------\nOutput:"
+            for i, cmd_ret in enumerate(outputs_to_check):
+                error_message_print += f"\n----------\nOutput {i}:"
                 # if cmd_ret:
                 # if 'error' in error_message.lower():
-                error_message_print = f"----------\nOutput:"
+
                 for line in cmd_ret.decode('utf-8').splitlines():
                     error_message_print += '\n' + line
                 error_message_print += '\n----------'
@@ -493,6 +495,7 @@ class BIGDreamBoothExecutor(Executor):
 
         sample_dataloader = accelerator.prepare(sample_dataloader)
         pipeline.to(accelerator.device)
+        print("accelerator.device", accelerator.device)
 
         docs = DocumentArray()
         for example in tqdm(
@@ -506,6 +509,7 @@ class BIGDreamBoothExecutor(Executor):
                     docs.append(Document(blob=buffer.getvalue()))
 
         del pipeline
+        accelerator.free_memory()
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
