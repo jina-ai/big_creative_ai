@@ -532,7 +532,7 @@ def download_pretrained_stable_diffusion_model(
     ]):
         pipe = StableDiffusionPipeline.from_pretrained(
             f"CompVis/{sd_version}", use_auth_token=True, revision=revision, torch_dtype=torch.float16
-        )
+        ).to('cuda')
         for _dir in [
             BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
         ]:
