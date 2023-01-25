@@ -478,7 +478,7 @@ class BIGDreamBoothExecutor(Executor):
                 output, err = cmd(cmd_args)
                 handle_error_messages_from_cmd([output, err], cmd_args)
             else:
-                from BIGDreamBooth.executor.scripts.generate import _generate
+                from .scripts.generate import _generate
                 _generate(
                     save_dir=tmp_dir,
                     model_path=model_path,
@@ -510,7 +510,7 @@ class BIGDreamBoothExecutor(Executor):
             # checking for errors
             handle_error_messages_from_cmd([output, err], cmd_args)
         else:
-            from BIGDreamBooth.executor.scripts.download_pretrained_stable_diffusion_model import download_pretrained_stable_diffusion_model
+            from .scripts.download_pretrained_stable_diffusion_model import download_pretrained_stable_diffusion_model
             download_pretrained_stable_diffusion_model(model_dir, sd_model, revision)
 
     @staticmethod
