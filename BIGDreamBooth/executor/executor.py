@@ -149,17 +149,16 @@ class BIGDreamBoothExecutor(Executor):
             return os.path.join(self.models_dir, *user_id.split('-'))
         return os.path.join(self.models_dir, user_id, identifier)
 
-    @staticmethod
-    def _get_user_id(parameters: Dict = None):
+    def _get_user_id(self, parameters: Dict = None):
         """Returns the user_id of the model which shall be finetuned.
         Using 'private' in the parameters for 'target_model' will return the user_id of the user who sent
         the request. Using METAMODEL_ID or PRE_TRAINED_MODEL_ID will return the user_id of the metamodel or pretrained.
         """
         target_model = parameters.get('target_model', 'private')
         if target_model == 'private':
-            user_id = _get_user_info(parameters['jwt']['token'])['_id']
+            user_id = '0' if self.is_colab else _get_user_info(parameters['jwt']['token'])['_id']
         elif target_model == BIGDreamBoothExecutor.PRIVATE_METAMODEL_ID:
-            user_id = _get_user_info(parameters['jwt']['token'])['_id'] + '-' \
+            user_id = ('0' if self.is_colab else _get_user_info(parameters['jwt']['token'])['_id']) + '-' \
                       + BIGDreamBoothExecutor.PRIVATE_METAMODEL_ID
         elif target_model == BIGDreamBoothExecutor.METAMODEL_ID:
             user_id = BIGDreamBoothExecutor.METAMODEL_ID
@@ -180,7 +179,7 @@ class BIGDreamBoothExecutor(Executor):
     @secure_request(SecurityLevel.USER, on='/list_identifiers_n_categories')
     def list_identifiers_n_categories(self, parameters, **kwargs):
         """Returns the identifiers & their categories of the models which were trained for the user and the metamodel."""
-        user_id = _get_user_info(parameters['jwt']['token'])['_id']
+        user_id = '0' if self.is_colab else _get_user_info(parameters['jwt']['token'])['_id']
         return DocumentArray(
             Document(
                 tags={
