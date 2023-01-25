@@ -11,17 +11,14 @@ from collections import defaultdict
 from typing import List, Dict, Tuple
 
 from PIL import Image
-from accelerate import Accelerator
 from accelerate.utils import write_basic_config
 from diffusers import StableDiffusionPipeline
 from docarray import Document
 from huggingface_hub import login as hf_login
 from jina import DocumentArray
 import torch
-from tqdm import tqdm
 
 from .auth import NOWAuthExecutor as Executor, secure_request, SecurityLevel, _get_user_info
-from .dreambooth import PromptDataset
 
 
 class BIGDreamBoothExecutor(Executor):
@@ -102,6 +99,7 @@ class BIGDreamBoothExecutor(Executor):
     def __init__(
             self,
             hf_token: str,
+            is_colab: bool = False,
             *args,
             **kwargs
     ):
@@ -109,13 +107,19 @@ class BIGDreamBoothExecutor(Executor):
 
         hf_login(token=hf_token)
 
+        self.is_colab = is_colab
+
         self.models_dir = os.path.join(self.workspace, 'models')
         os.makedirs(self.models_dir, exist_ok=True)
         self.category_images_dir = os.path.join(self.workspace, 'category_images')
         os.makedirs(self.category_images_dir, exist_ok=True)
         self.metamodel_instance_images_dir = lambda _user_id: \
             os.path.join(self.workspace, 'metamodel_instance_images', _user_id)
-        download_pretrained_stable_diffusion_model(self.models_dir)
+        self.download_pretrained_stable_diffusion_model(
+            self.models_dir,
+            sd_model='CompVis/stable-diffusion-v1-4',
+            revision='fp16' if self.is_colab else None
+        )
 
         self.user_to_identifiers_and_categories: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
         self.user_to_identifiers_and_categories_path = os.path.join(
@@ -128,7 +132,7 @@ class BIGDreamBoothExecutor(Executor):
                 for user_id, identifiers_and_categories in tmp_dict.items():
                     self.user_to_identifiers_and_categories[user_id].update(identifiers_and_categories)
 
-        write_basic_config(mixed_precision='no')
+        write_basic_config(mixed_precision='fp16' if self.is_colab else 'no')
 
     def _get_model_dir(self, user_id: str, identifier: str = None) -> str:
         """Returns the path to the model directory of the user with the given user_id and identifier.
@@ -145,17 +149,16 @@ class BIGDreamBoothExecutor(Executor):
             return os.path.join(self.models_dir, *user_id.split('-'))
         return os.path.join(self.models_dir, user_id, identifier)
 
-    @staticmethod
-    def _get_user_id(parameters: Dict = None):
+    def _get_user_id(self, parameters: Dict = None):
         """Returns the user_id of the model which shall be finetuned.
         Using 'private' in the parameters for 'target_model' will return the user_id of the user who sent
         the request. Using METAMODEL_ID or PRE_TRAINED_MODEL_ID will return the user_id of the metamodel or pretrained.
         """
         target_model = parameters.get('target_model', 'private')
         if target_model == 'private':
-            user_id = _get_user_info(parameters['jwt']['token'])['_id']
+            user_id = '0' if self.is_colab else _get_user_info(parameters['jwt']['token'])['_id']
         elif target_model == BIGDreamBoothExecutor.PRIVATE_METAMODEL_ID:
-            user_id = _get_user_info(parameters['jwt']['token'])['_id'] + '-' \
+            user_id = ('0' if self.is_colab else _get_user_info(parameters['jwt']['token'])['_id']) + '-' \
                       + BIGDreamBoothExecutor.PRIVATE_METAMODEL_ID
         elif target_model == BIGDreamBoothExecutor.METAMODEL_ID:
             user_id = BIGDreamBoothExecutor.METAMODEL_ID
@@ -176,7 +179,7 @@ class BIGDreamBoothExecutor(Executor):
     @secure_request(SecurityLevel.USER, on='/list_identifiers_n_categories')
     def list_identifiers_n_categories(self, parameters, **kwargs):
         """Returns the identifiers & their categories of the models which were trained for the user and the metamodel."""
-        user_id = _get_user_info(parameters['jwt']['token'])['_id']
+        user_id = '0' if self.is_colab else _get_user_info(parameters['jwt']['token'])['_id']
         return DocumentArray(
             Document(
                 tags={
@@ -196,7 +199,11 @@ class BIGDreamBoothExecutor(Executor):
         self.logger.info(f'Deleting model {model_path}')
         if user_id == self.METAMODEL_ID or user_id.endswith('-' + self.PRIVATE_METAMODEL_ID):
             self.user_to_identifiers_and_categories[user_id] = {}
-            pipe = StableDiffusionPipeline.from_pretrained(os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR))
+            pipe = StableDiffusionPipeline.from_pretrained(
+                os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR),
+                torch_dtype=torch.float16,
+                revision='fp16' if self.is_colab else None
+            )
             pipe.save_pretrained(model_path)
             # delete all subdirectories of self.metamodel_instance_images_dir
             for sub_dir in os.listdir(self.metamodel_instance_images_dir(user_id)):
@@ -299,13 +306,14 @@ class BIGDreamBoothExecutor(Executor):
                 _category_images = self._generate(
                     num_images=_num_images,
                     prompt=_category,
-                    model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+                    model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR),
+                    batch_size=8,
+                    revision='fp16' if self.is_colab else None
                 )
-                torch.cuda.empty_cache()
                 for i, doc in enumerate(_category_images):
                     doc.convert_blob_to_image_tensor()
                     doc.save_image_tensor_to_file(
-                        file=os.path.join(_category_data_dir, f'{_num_existing_images+i}.jpeg'), image_format='jpeg'
+                        file=os.path.join(_category_data_dir, f'{_num_existing_images + i}.jpeg'), image_format='jpeg'
                     )
 
         # copy images to tmp dir
@@ -362,7 +370,7 @@ class BIGDreamBoothExecutor(Executor):
             pretrained_model_dir = output_dir
         elif user_id.endswith(self.PRIVATE_METAMODEL_ID):
             pretrained_model_dir = output_dir if os.path.exists(output_dir) else os.path.join(
-                self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+                 self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
         else:
             pretrained_model_dir = os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
 
@@ -401,23 +409,23 @@ class BIGDreamBoothExecutor(Executor):
                 '--with_prior_preservation',
                 "--resolution", "512",
                 "--learning_rate", f"{learning_rate}", "--lr_scheduler", "constant", "--lr_warmup_steps", "0",
-                "--max_train_steps", f"{max_train_steps}", "--train_batch_size", "2",
-                "--gradient_accumulation_steps", "2", "--gradient_checkpointing", "--use_8bit_adam",
+                "--max_train_steps", f"{max_train_steps}", "--num_class_images", f"{max_train_steps}",
+                "--use_8bit_adam",
             ]
+            if self.is_colab:
+                cmd_args += [
+                    "--train_batch_size", "1", "--gradient_accumulation_steps", "1", "--mixed_precision", "fp16",
+                    '--revision', 'fp16'
+                ]
+            else:
+                cmd_args += [
+                    "--train_batch_size", "2", "--gradient_accumulation_steps", "2", "--gradient_checkpointing"
+                ]
             self.logger.info(f'Executing {" ".join(cmd_args)}')
             print(f'Executing {" ".join(cmd_args)}')
             output, err = cmd(cmd_args)
-            for cmd_ret in [output, err]:
-                if cmd_ret:
-                    error_message = cmd_ret .decode('utf-8')
-                    if 'error' in error_message.lower():
-                        error_message_print = f"----------\nOutput:"
-                        for line in error_message.splitlines():
-                            error_message_print += '\n' + line
-                        error_message_print += '\n----------'
-                        print(error_message_print, file=sys.stderr)
-                        raise RuntimeError(f'Error while executing dreambooth.py:'
-                                           f"{err.decode('utf-8').split('ERROR')[-1]}")
+            outputs_to_check = [err]
+            handle_error_messages_from_cmd(outputs_to_check, cmd_args)
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
@@ -441,45 +449,67 @@ class BIGDreamBoothExecutor(Executor):
 
         for doc in docs:
             prompt = doc.text.strip()
-            doc.chunks = self._generate(num_images=num_images, model_path=model_path, prompt=prompt)
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+            doc.chunks = self._generate(
+                num_images=num_images,
+                model_path=model_path,
+                prompt=prompt,
+                batch_size=8,
+                revision='fp16' if self.is_colab else None
+            )
 
-    @staticmethod
-    def _generate(num_images: int, model_path: str, prompt: str) -> DocumentArray:
-        accelerator = Accelerator()
-
-        torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
-        pipeline = StableDiffusionPipeline.from_pretrained(
-            model_path,
-            torch_dtype=torch_dtype,
-            safety_checker=None,
-        )
-        pipeline.safetyer_checker = None
-        pipeline.set_progress_bar_config(disable=True)
-
-        sample_dataset = PromptDataset(prompt, num_images)
-        sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=8)
-
-        sample_dataloader = accelerator.prepare(sample_dataloader)
-        pipeline.to(accelerator.device)
-
-        docs = DocumentArray()
-        for example in tqdm(
-            sample_dataloader, desc="Generating images", disable=not accelerator.is_local_main_process
-        ):
-            images = pipeline(example["prompt"]).images
-            for image in images:
-                with io.BytesIO() as buffer:
-                    # save image as jpeg to save space with quality 95
-                    image.save(buffer, format="JPEG", quality=95)
-                    docs.append(Document(blob=buffer.getvalue()))
-
-        del pipeline
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
+    def _generate(self, num_images: int, model_path: str, prompt: str, batch_size: int, revision=None) -> DocumentArray:
+        # call scripts/generate.py
+        cur_dir = os.path.abspath(os.path.join(__file__, '..'))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            if self.is_colab:
+                cmd_args = [
+                    'python',
+                    os.path.join(cur_dir, 'scripts/generate.py'),
+                    '--save_dir', tmp_dir,
+                    '--model_path', model_path,
+                    '--prompt', prompt,
+                    '--num_images', str(num_images),
+                    '--batch_size', str(batch_size),
+                ]
+                if revision:
+                    cmd_args += ['--revision', revision]
+                output, err = cmd(cmd_args)
+                handle_error_messages_from_cmd([output, err], cmd_args)
+            else:
+                from .scripts.generate import _generate
+                _generate(
+                    save_dir=tmp_dir,
+                    model_path=model_path,
+                    prompt=prompt,
+                    num_images=num_images,
+                    batch_size=batch_size,
+                )
+            # load images
+            docs = DocumentArray.from_files(os.path.join(tmp_dir, '**'))
+            for doc in docs:
+                doc.load_uri_to_blob()
+                doc.uri = None
         return docs
+
+    def download_pretrained_stable_diffusion_model(self, model_dir: str, sd_model: str, revision: str = None):
+        """Downloads pretrained stable diffusion model."""
+        if self.is_colab:
+            # call scripts/download_pretrained_stable_diffusion_model.py
+            cur_dir = os.path.dirname(os.path.abspath(__file__))
+            cmd_args = [
+                'python',
+                os.path.join(cur_dir, 'scripts/download_pretrained_stable_diffusion_model.py'),
+                '--model_dir', model_dir,
+                '--sd_model', sd_model
+            ]
+            if revision:
+                cmd_args += ['--revision', revision]
+            output, err = cmd(cmd_args)
+            # checking for errors
+            handle_error_messages_from_cmd([output, err], cmd_args)
+        else:
+            from .scripts.download_pretrained_stable_diffusion_model import download_pretrained_stable_diffusion_model
+            download_pretrained_stable_diffusion_model(model_dir, sd_model, revision)
 
     @staticmethod
     def _get_next_identifier(used_identifiers: List[str]) -> str:
@@ -490,16 +520,16 @@ class BIGDreamBoothExecutor(Executor):
         raise RuntimeError('No identifier left for this user. Please, inform the administrator.')
 
 
-def download_pretrained_stable_diffusion_model(model_dir: str, sd_version: str = 'stable-diffusion-v1-4'):
-    """Downloads pretrained stable diffusion model."""
-    if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
-        BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
-    ]):
-        pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True)
-        for _dir in [
-            BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
-        ]:
-            pipe.save_pretrained(os.path.join(model_dir, _dir))
+def handle_error_messages_from_cmd(outputs_to_check: List[str], cmd_args: List[str]):
+    error_message = ''
+    for i, cmd_ret in enumerate(outputs_to_check):
+        error_message += f"\n----------\nOutput {i}:"
+        for line in cmd_ret.decode('utf-8').splitlines():
+            error_message += '\n' + line
+        error_message += '\n----------'
+    print(error_message, file=sys.stderr)
+    if 'error' in error_message.lower():
+        raise RuntimeError(f"Error in {' '.join(cmd_args)}: {error_message}")
 
 
 def cmd(command, std_output=False, wait=True):

@@ -1,0 +1,11 @@
+prometheus_client
+accelerate
+torchvision
+transformers>=4.25.1
+ftfy
+tensorboard
+modelcards
+markupsafe==2.0.1
+bitsandbytes==0.35.0
+gradio
+natsort
