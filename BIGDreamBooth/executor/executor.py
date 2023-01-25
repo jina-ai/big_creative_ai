@@ -425,11 +425,7 @@ class BIGDreamBoothExecutor(Executor):
             self.logger.info(f'Executing {" ".join(cmd_args)}')
             print(f'Executing {" ".join(cmd_args)}')
             output, err = cmd(cmd_args)
-            # checking for errors
-            # outputs_to_check = [err]
-            # if not self.is_colab:
-            #     outputs_to_check.append(output)
-            handle_error_messages_from_cmd([output, err], cmd_args)
+            handle_error_messages_from_cmd([err], cmd_args)
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
@@ -503,10 +499,10 @@ def handle_error_messages_from_cmd(outputs_to_check: List[str], cmd_args: List[s
             error_message += '\n' + line
         error_message += '\n----------'
     print(error_message, file=sys.stderr)
-    # raise RuntimeError(
-    #     f'Error while executing:'
-    #     f'{" ".join(cmd_args)}\n{error_message_print}'
-    # )
+    raise RuntimeError(
+        f'Error while executing:'
+        f'{" ".join(cmd_args)}\n{error_message}'
+    )
 
 
 def download_pretrained_stable_diffusion_model(model_dir: str, sd_model: str, revision: str = None):
