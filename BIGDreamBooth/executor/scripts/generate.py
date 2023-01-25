@@ -1,9 +1,14 @@
 import io
+import os
 
 import torch
 from accelerate import Accelerator
 from diffusers import StableDiffusionPipeline
 from tqdm import tqdm
+
+import sys
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.join(cur_dir, ''))
 
 from BIGDreamBooth.executor.dreambooth import PromptDataset
 
