@@ -502,10 +502,8 @@ def handle_error_messages_from_cmd(outputs_to_check: List[str], cmd_args: List[s
             error_message += '\n' + line
         error_message += '\n----------'
     print(error_message, file=sys.stderr)
-    raise RuntimeError(
-        f'Error while executing:'
-        f'{" ".join(cmd_args)}\n{error_message}'
-    )
+    if 'error' in error_message.lower():
+        raise RuntimeError(f"Error in {' '.join(cmd_args)}: {error_message}")
 
 
 def download_pretrained_stable_diffusion_model(model_dir: str, sd_model: str, revision: str = None):
