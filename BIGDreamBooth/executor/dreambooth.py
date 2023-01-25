@@ -604,7 +604,7 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="unet",
         revision=args.revision,
-        torch_dtype=torch.float32
+        torch_dtype=torch.float16
     )
     print("loaded unet")
 
