@@ -119,7 +119,11 @@ class BIGDreamBoothExecutor(Executor):
         os.makedirs(self.category_images_dir, exist_ok=True)
         self.metamodel_instance_images_dir = lambda _user_id: \
             os.path.join(self.workspace, 'metamodel_instance_images', _user_id)
-        download_pretrained_stable_diffusion_model(self.models_dir, revision='fp16' if self.is_colab else None)
+        download_pretrained_stable_diffusion_model(
+            self.models_dir,
+            sd_model='runwayml/stable-diffusion-v1-4' if self.is_colab else 'CompVis/stable-diffusion-v1-4',
+            revision='fp16' if self.is_colab else None
+        )
 
         self.user_to_identifiers_and_categories: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
         self.user_to_identifiers_and_categories_path = os.path.join(
@@ -438,11 +442,12 @@ class BIGDreamBoothExecutor(Executor):
                 for line in cmd_ret.decode('utf-8').splitlines():
                     error_message_print += '\n' + line
                 error_message_print += '\n----------'
-                print(error_message_print, file=sys.stderr)
+                # print(error_message_print, file=sys.stderr)
                 # raise RuntimeError(
                 #     f'Error while executing dreambooth.py:'
                 #     f'{" ".join(cmd_args)}\n{error_message_print}'
                 # )
+            print(error_message_print, file=sys.stderr)
 
             gc.collect()
             if torch.cuda.is_available():
@@ -525,9 +530,7 @@ class BIGDreamBoothExecutor(Executor):
         raise RuntimeError('No identifier left for this user. Please, inform the administrator.')
 
 
-def download_pretrained_stable_diffusion_model(
-        model_dir: str, sd_version: str = 'stable-diffusion-v1-4', revision: str = None
-):
+def download_pretrained_stable_diffusion_model(model_dir: str, sd_model: str, revision: str = None):
     """Downloads pretrained stable diffusion model."""
     if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
         BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
@@ -535,9 +538,10 @@ def download_pretrained_stable_diffusion_model(
         # use accelerator to free memory
         accelerator = Accelerator()
         pipe = StableDiffusionPipeline.from_pretrained(
-            f"CompVis/{sd_version}", use_auth_token=True, revision=revision, torch_dtype=torch.float16
+            sd_model, use_auth_token=True, revision=revision, torch_dtype=torch.float16
         )
         pipe.to(accelerator.device)
+        pipe = accelerator.prepare(pipe)
         for _dir in [
             BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
         ]:
