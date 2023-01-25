@@ -200,7 +200,11 @@ class BIGDreamBoothExecutor(Executor):
         self.logger.info(f'Deleting model {model_path}')
         if user_id == self.METAMODEL_ID or user_id.endswith('-' + self.PRIVATE_METAMODEL_ID):
             self.user_to_identifiers_and_categories[user_id] = {}
-            pipe = StableDiffusionPipeline.from_pretrained(os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR))
+            pipe = StableDiffusionPipeline.from_pretrained(
+                os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR),
+                torch_dtype=torch.float16,
+                revision='fp16' if self.is_colab else None
+            )
             pipe.save_pretrained(model_path)
             # delete all subdirectories of self.metamodel_instance_images_dir
             for sub_dir in os.listdir(self.metamodel_instance_images_dir(user_id)):
@@ -439,8 +443,10 @@ class BIGDreamBoothExecutor(Executor):
                     #     f'{" ".join(cmd_args)}\n{error_message_print}'
                     # )
 
-            torch.cuda.empty_cache()
             gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
@@ -471,20 +477,16 @@ class BIGDreamBoothExecutor(Executor):
                 batch_size=4 if self.is_colab else 8,
                 revision='fp16' if self.is_colab else None
             )
-        torch.cuda.empty_cache()
         gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
     @staticmethod
     def _generate(num_images: int, model_path: str, prompt: str, batch_size: int, revision=None) -> DocumentArray:
         accelerator = Accelerator()
 
-        torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
-        pipeline = StableDiffusionPipeline.from_pretrained(
-            model_path,
-            torch_dtype=torch_dtype,
-            safety_checker=None,
-            revision=revision,
-        )
+        pipeline = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16, revision=revision)
         pipeline.set_progress_bar_config(disable=True)
 
         sample_dataset = PromptDataset(prompt, num_images)
@@ -505,8 +507,10 @@ class BIGDreamBoothExecutor(Executor):
                     docs.append(Document(blob=buffer.getvalue()))
 
         del pipeline
-        torch.cuda.empty_cache()
         gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
         return docs
 
@@ -526,14 +530,18 @@ def download_pretrained_stable_diffusion_model(
     if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
         BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
     ]):
-        pipe = StableDiffusionPipeline.from_pretrained(f"CompVis/{sd_version}", use_auth_token=True, revision=revision)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            f"CompVis/{sd_version}", use_auth_token=True, revision=revision, torch_dtype=torch.float16
+        )
         for _dir in [
             BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
         ]:
             pipe.save_pretrained(os.path.join(model_dir, _dir))
         del pipe
-        torch.cuda.empty_cache()
         gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
 
 def cmd(command, std_output=False, wait=True):
