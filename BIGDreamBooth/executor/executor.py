@@ -1,4 +1,3 @@
-import gc
 import glob
 import io
 import json
@@ -12,17 +11,14 @@ from collections import defaultdict
 from typing import List, Dict, Tuple
 
 from PIL import Image
-from accelerate import Accelerator
 from accelerate.utils import write_basic_config
 from diffusers import StableDiffusionPipeline
 from docarray import Document
 from huggingface_hub import login as hf_login
 from jina import DocumentArray
 import torch
-from tqdm import tqdm
 
 from .auth import NOWAuthExecutor as Executor, secure_request, SecurityLevel, _get_user_info
-from .dreambooth import PromptDataset
 
 
 class BIGDreamBoothExecutor(Executor):
@@ -119,12 +115,11 @@ class BIGDreamBoothExecutor(Executor):
         os.makedirs(self.category_images_dir, exist_ok=True)
         self.metamodel_instance_images_dir = lambda _user_id: \
             os.path.join(self.workspace, 'metamodel_instance_images', _user_id)
-        if not self.is_colab:
-            download_pretrained_stable_diffusion_model(
-                self.models_dir,
-                sd_model='runwayml/stable-diffusion-v1-5' if self.is_colab else 'CompVis/stable-diffusion-v1-4',
-                revision='fp16' if self.is_colab else None
-            )
+        download_pretrained_stable_diffusion_model(
+            self.models_dir,
+            sd_model='CompVis/stable-diffusion-v1-4',
+            revision='fp16' if self.is_colab else None
+        )
 
         self.user_to_identifiers_and_categories: Dict[str, Dict[str, str]] = defaultdict(lambda: defaultdict(str))
         self.user_to_identifiers_and_categories_path = os.path.join(
@@ -434,29 +429,10 @@ class BIGDreamBoothExecutor(Executor):
             print(f'Executing {" ".join(cmd_args)}')
             output, err = cmd(cmd_args)
             # checking for errors
-            outputs_to_check = [output, err]
+            # outputs_to_check = [err]
             # if not self.is_colab:
             #     outputs_to_check.append(output)
-            error_message_print = f"----------\nOutput:"
-            for i, cmd_ret in enumerate(outputs_to_check):
-                error_message_print += f"\n----------\nOutput {i}:"
-                # if cmd_ret:
-                # if 'error' in error_message.lower():
-
-                for line in cmd_ret.decode('utf-8').splitlines():
-                    error_message_print += '\n' + line
-                error_message_print += '\n----------'
-                # print(error_message_print, file=sys.stderr)
-                # raise RuntimeError(
-                #     f'Error while executing dreambooth.py:'
-                #     f'{" ".join(cmd_args)}\n{error_message_print}'
-                # )
-            print(error_message_print, file=sys.stderr)
-
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.ipc_collect()
+            handle_error_messages_from_cmd([output, err], cmd_args)
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
@@ -489,43 +465,27 @@ class BIGDreamBoothExecutor(Executor):
                 batch_size=4 if self.is_colab else 8,
                 revision='fp16' if self.is_colab else None
             )
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
 
     @staticmethod
     def _generate(num_images: int, model_path: str, prompt: str, batch_size: int, revision=None) -> DocumentArray:
-        accelerator = Accelerator()
-
-        pipeline = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16, revision=revision)
-        pipeline.set_progress_bar_config(disable=True)
-
-        sample_dataset = PromptDataset(prompt, num_images)
-        sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=batch_size)
-
-        sample_dataloader = accelerator.prepare(sample_dataloader)
-        pipeline.to(accelerator.device)
-
-        docs = DocumentArray()
-        for example in tqdm(
-                sample_dataloader, desc="Generating images", disable=not accelerator.is_local_main_process
-        ):
-            images = pipeline(example["prompt"]).images
-            for image in images:
-                with io.BytesIO() as buffer:
-                    # save image as jpeg to save space with quality 95
-                    image.save(buffer, format="JPEG", quality=95)
-                    docs.append(Document(blob=buffer.getvalue()))
-
-        del pipeline
-        accelerator.free_memory()
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
-
-        return docs
+        # call scripts/generate.py
+        cur_dir = os.path.abspath(os.path.join(__file__, '..'))
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cmd_args = [
+                'python',
+                os.path.join(cur_dir, 'scripts/generate.py'),
+                '--save_dir', tmp_dir,
+                '--model_path', model_path,
+                '--prompt', prompt,
+                '--num_images', str(num_images),
+                '--batch_size', str(batch_size),
+            ]
+            if revision:
+                cmd_args += ['--revision', revision]
+            output, err = cmd(cmd_args)
+            handle_error_messages_from_cmd([output, err], cmd_args)
+            # load images
+            return DocumentArray.from_files(os.path.join(tmp_dir, '**'))
 
     @staticmethod
     def _get_next_identifier(used_identifiers: List[str]) -> str:
@@ -536,29 +496,35 @@ class BIGDreamBoothExecutor(Executor):
         raise RuntimeError('No identifier left for this user. Please, inform the administrator.')
 
 
+def handle_error_messages_from_cmd(outputs_to_check: List[str], cmd_args: List[str]):
+    error_message = ''
+    for i, cmd_ret in enumerate(outputs_to_check):
+        error_message += f"\n----------\nOutput {i}:"
+        for line in cmd_ret.decode('utf-8').splitlines():
+            error_message += '\n' + line
+        error_message += '\n----------'
+    print(error_message, file=sys.stderr)
+    # raise RuntimeError(
+    #     f'Error while executing:'
+    #     f'{" ".join(cmd_args)}\n{error_message_print}'
+    # )
+
+
 def download_pretrained_stable_diffusion_model(model_dir: str, sd_model: str, revision: str = None):
     """Downloads pretrained stable diffusion model."""
-    if not all(os.path.exists(os.path.join(model_dir, _dir)) for _dir in [
-        BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
-    ]):
-        # use accelerator to free memory
-        accelerator = Accelerator()
-        pipe = StableDiffusionPipeline.from_pretrained(
-            sd_model, use_auth_token=True, revision=revision, torch_dtype=torch.float16
-        )
-        pipe.to(accelerator.device)
-        pipe = accelerator.prepare(pipe)
-        for _dir in [
-            BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
-        ]:
-            pipe.save_pretrained(os.path.join(model_dir, _dir))
-
-        del pipe
-        accelerator.free_memory()
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
+    # call scripts/download_pretrained_stable_diffusion_model.py
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    cmd_args = [
+        'python',
+        os.path.join(cur_dir, 'scripts/download_pretrained_stable_diffusion_model.py'),
+        '--model_dir', model_dir,
+        '--sd_model', sd_model
+    ]
+    if revision:
+        cmd_args += ['--revision', revision]
+    output, err = cmd(cmd_args)
+    # checking for errors
+    handle_error_messages_from_cmd([output, err], cmd_args)
 
 
 def cmd(command, std_output=False, wait=True):
