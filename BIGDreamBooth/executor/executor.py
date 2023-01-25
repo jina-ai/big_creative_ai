@@ -471,6 +471,8 @@ class BIGDreamBoothExecutor(Executor):
                 batch_size=4 if self.is_colab else 8,
                 revision='fp16' if self.is_colab else None
             )
+        torch.cuda.empty_cache()
+        gc.collect()
 
     @staticmethod
     def _generate(num_images: int, model_path: str, prompt: str, batch_size: int, revision=None) -> DocumentArray:
