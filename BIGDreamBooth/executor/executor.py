@@ -115,7 +115,7 @@ class BIGDreamBoothExecutor(Executor):
         os.makedirs(self.category_images_dir, exist_ok=True)
         self.metamodel_instance_images_dir = lambda _user_id: \
             os.path.join(self.workspace, 'metamodel_instance_images', _user_id)
-        download_pretrained_stable_diffusion_model(
+        self.download_pretrained_stable_diffusion_model(
             self.models_dir,
             sd_model='CompVis/stable-diffusion-v1-4',
             revision='fp16' if self.is_colab else None
@@ -459,30 +459,59 @@ class BIGDreamBoothExecutor(Executor):
                 revision='fp16' if self.is_colab else None
             )
 
-    @staticmethod
-    def _generate(num_images: int, model_path: str, prompt: str, batch_size: int, revision=None) -> DocumentArray:
+    def _generate(self, num_images: int, model_path: str, prompt: str, batch_size: int, revision=None) -> DocumentArray:
         # call scripts/generate.py
         cur_dir = os.path.abspath(os.path.join(__file__, '..'))
         with tempfile.TemporaryDirectory() as tmp_dir:
-            cmd_args = [
-                'python',
-                os.path.join(cur_dir, 'scripts/generate.py'),
-                '--save_dir', tmp_dir,
-                '--model_path', model_path,
-                '--prompt', prompt,
-                '--num_images', str(num_images),
-                '--batch_size', str(batch_size),
-            ]
-            if revision:
-                cmd_args += ['--revision', revision]
-            output, err = cmd(cmd_args)
-            handle_error_messages_from_cmd([output, err], cmd_args)
+            if self.is_colab:
+                cmd_args = [
+                    'python',
+                    os.path.join(cur_dir, 'scripts/generate.py'),
+                    '--save_dir', tmp_dir,
+                    '--model_path', model_path,
+                    '--prompt', prompt,
+                    '--num_images', str(num_images),
+                    '--batch_size', str(batch_size),
+                ]
+                if revision:
+                    cmd_args += ['--revision', revision]
+                output, err = cmd(cmd_args)
+                handle_error_messages_from_cmd([output, err], cmd_args)
+            else:
+                from BIGDreamBooth.executor.scripts.generate import _generate
+                _generate(
+                    save_dir=tmp_dir,
+                    model_path=model_path,
+                    prompt=prompt,
+                    num_images=num_images,
+                    batch_size=batch_size,
+                )
             # load images
             docs = DocumentArray.from_files(os.path.join(tmp_dir, '**'))
             for doc in docs:
                 doc.load_uri_to_blob()
                 doc.uri = None
         return docs
+
+    def download_pretrained_stable_diffusion_model(self, model_dir: str, sd_model: str, revision: str = None):
+        """Downloads pretrained stable diffusion model."""
+        if self.is_colab:
+            # call scripts/download_pretrained_stable_diffusion_model.py
+            cur_dir = os.path.dirname(os.path.abspath(__file__))
+            cmd_args = [
+                'python',
+                os.path.join(cur_dir, 'scripts/download_pretrained_stable_diffusion_model.py'),
+                '--model_dir', model_dir,
+                '--sd_model', sd_model
+            ]
+            if revision:
+                cmd_args += ['--revision', revision]
+            output, err = cmd(cmd_args)
+            # checking for errors
+            handle_error_messages_from_cmd([output, err], cmd_args)
+        else:
+            from BIGDreamBooth.executor.scripts.download_pretrained_stable_diffusion_model import download_pretrained_stable_diffusion_model
+            download_pretrained_stable_diffusion_model(model_dir, sd_model, revision)
 
     @staticmethod
     def _get_next_identifier(used_identifiers: List[str]) -> str:
@@ -503,23 +532,6 @@ def handle_error_messages_from_cmd(outputs_to_check: List[str], cmd_args: List[s
     print(error_message, file=sys.stderr)
     if 'error' in error_message.lower():
         raise RuntimeError(f"Error in {' '.join(cmd_args)}: {error_message}")
-
-
-def download_pretrained_stable_diffusion_model(model_dir: str, sd_model: str, revision: str = None):
-    """Downloads pretrained stable diffusion model."""
-    # call scripts/download_pretrained_stable_diffusion_model.py
-    cur_dir = os.path.dirname(os.path.abspath(__file__))
-    cmd_args = [
-        'python',
-        os.path.join(cur_dir, 'scripts/download_pretrained_stable_diffusion_model.py'),
-        '--model_dir', model_dir,
-        '--sd_model', sd_model
-    ]
-    if revision:
-        cmd_args += ['--revision', revision]
-    output, err = cmd(cmd_args)
-    # checking for errors
-    handle_error_messages_from_cmd([output, err], cmd_args)
 
 
 def cmd(command, std_output=False, wait=True):
