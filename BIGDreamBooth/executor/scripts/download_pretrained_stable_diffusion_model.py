@@ -13,7 +13,10 @@ parentdir = os.path.dirname(parentdir)
 parentdir = os.path.dirname(parentdir)
 sys.path.insert(0, parentdir)
 
-from BIGDreamBooth.executor import BIGDreamBoothExecutor
+try:
+    from BIGDreamBooth.executor import BIGDreamBoothExecutor
+except ImportError:
+    from ..executor import BIGDreamBoothExecutor
 
 
 def download_pretrained_stable_diffusion_model(model_dir: str, sd_model: str, revision: str = None):

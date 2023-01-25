@@ -14,8 +14,10 @@ parentdir = os.path.dirname(parentdir)
 parentdir = os.path.dirname(parentdir)
 sys.path.insert(0, parentdir)
 
-
-from BIGDreamBooth.executor.dreambooth import PromptDataset
+try:
+    from BIGDreamBooth.executor.dreambooth import PromptDataset
+except ImportError:
+    from ..dreambooth import PromptDataset
 
 
 def _generate(save_dir: str, num_images: int, model_path: str, prompt: str, batch_size: int, revision=None):
