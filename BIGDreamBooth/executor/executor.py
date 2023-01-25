@@ -1,3 +1,4 @@
+import gc
 import glob
 import io
 import json
@@ -306,7 +307,6 @@ class BIGDreamBoothExecutor(Executor):
                     batch_size=4 if self.is_colab else 8,
                     revision='fp16' if self.is_colab else None
                 )
-                torch.cuda.empty_cache()
                 for i, doc in enumerate(_category_images):
                     doc.convert_blob_to_image_tensor()
                     doc.save_image_tensor_to_file(
@@ -439,6 +439,9 @@ class BIGDreamBoothExecutor(Executor):
                             f'{" ".join(cmd_args)}\n{error_message_print}'
                         )
 
+            torch.cuda.empty_cache()
+            gc.collect()
+
         self.user_to_identifiers_and_categories[user_id][identifier] = category
         with open(self.user_to_identifiers_and_categories_path, 'w') as f:
             json.dump(self.user_to_identifiers_and_categories, f)
@@ -468,7 +471,6 @@ class BIGDreamBoothExecutor(Executor):
                 batch_size=4 if self.is_colab else 8,
                 revision='fp16' if self.is_colab else None
             )
-            torch.cuda.empty_cache()
 
     @staticmethod
     def _generate(num_images: int, model_path: str, prompt: str, batch_size: int, revision=None) -> DocumentArray:
@@ -502,6 +504,7 @@ class BIGDreamBoothExecutor(Executor):
 
         del pipeline
         torch.cuda.empty_cache()
+        gc.collect()
 
         return docs
 
