@@ -309,10 +309,13 @@ class BIGDreamBoothExecutor(Executor):
             _num_existing_images = len(glob.glob(os.path.join(_category_data_dir, '*.jpeg')))
             if _num_existing_images < _num_images:
                 self.logger.info(f'Generating {_num_images - _num_existing_images} images for category {_category}')
+                model_path = os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR)
+                if not os.path.exists(model_path):
+                    model_path = 'CompVis/stable-diffusion-v1-4'
                 _category_images = self._generate(
                     num_images=_num_images,
                     prompt=_category,
-                    model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR),
+                    model_path=model_path,
                     batch_size=4 if self.is_colab else 8,
                     revision='fp16' if self.is_colab else None
                 )
