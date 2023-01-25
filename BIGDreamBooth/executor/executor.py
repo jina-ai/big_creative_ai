@@ -425,8 +425,6 @@ class BIGDreamBoothExecutor(Executor):
             print(f'Executing {" ".join(cmd_args)}')
             output, err = cmd(cmd_args)
             outputs_to_check = [err]
-            if not self.is_colab:
-                outputs_to_check.append(output)
             handle_error_messages_from_cmd(outputs_to_check, cmd_args)
 
         self.user_to_identifiers_and_categories[user_id][identifier] = category
