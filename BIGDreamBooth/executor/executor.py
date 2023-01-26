@@ -459,31 +459,21 @@ class BIGDreamBoothExecutor(Executor):
 
     def _generate(self, num_images: int, model_path: str, prompt: str, batch_size: int, revision=None) -> DocumentArray:
         # call scripts/generate.py
-        cur_dir = os.path.abspath(os.path.join(__file__, '..'))
+        cur_dir = os.path.dirname(os.path.abspath(__file__))
         with tempfile.TemporaryDirectory() as tmp_dir:
-            if self.is_colab:
-                cmd_args = [
-                    'python',
-                    os.path.join(cur_dir, 'scripts/generate.py'),
-                    '--save_dir', tmp_dir,
-                    '--model_path', model_path,
-                    '--prompt', prompt,
-                    '--num_images', str(num_images),
-                    '--batch_size', str(batch_size),
-                ]
-                if revision:
-                    cmd_args += ['--revision', revision]
-                output, err = cmd(cmd_args)
-                handle_error_messages_from_cmd([output, err], cmd_args)
-            else:
-                from .scripts.generate import _generate
-                _generate(
-                    save_dir=tmp_dir,
-                    model_path=model_path,
-                    prompt=prompt,
-                    num_images=num_images,
-                    batch_size=batch_size,
-                )
+            cmd_args = [
+                'python',
+                os.path.join(cur_dir, 'scripts/generate.py'),
+                '--save_dir', tmp_dir,
+                '--model_path', model_path,
+                '--prompt', prompt,
+                '--num_images', str(num_images),
+                '--batch_size', str(batch_size),
+            ]
+            if revision:
+                cmd_args += ['--revision', revision]
+            output, err = cmd(cmd_args)
+            handle_error_messages_from_cmd([output, err], cmd_args)
             # load images
             docs = DocumentArray.from_files(os.path.join(tmp_dir, '**'))
             for doc in docs:
@@ -493,23 +483,23 @@ class BIGDreamBoothExecutor(Executor):
 
     def download_pretrained_stable_diffusion_model(self, model_dir: str, sd_model: str, revision: str = None):
         """Downloads pretrained stable diffusion model."""
-        if self.is_colab:
-            # call scripts/download_pretrained_stable_diffusion_model.py
-            cur_dir = os.path.dirname(os.path.abspath(__file__))
-            cmd_args = [
-                'python',
-                os.path.join(cur_dir, 'scripts/download_pretrained_stable_diffusion_model.py'),
-                '--model_dir', model_dir,
-                '--sd_model', sd_model
-            ]
-            if revision:
-                cmd_args += ['--revision', revision]
-            output, err = cmd(cmd_args)
-            # checking for errors
-            handle_error_messages_from_cmd([output, err], cmd_args)
-        else:
-            from .scripts.download_pretrained_stable_diffusion_model import download_pretrained_stable_diffusion_model
-            download_pretrained_stable_diffusion_model(model_dir, sd_model, revision)
+        cur_dir = os.path.dirname(os.path.abspath(__file__))
+        for _dir in [
+            BIGDreamBoothExecutor.PRE_TRAINDED_MODEL_DIR, BIGDreamBoothExecutor.METAMODEL_DIR,
+        ]:
+            if not os.path.exists(os.path.join(model_dir, _dir)):
+                cmd_args = [
+                    'python',
+                    os.path.join(cur_dir, 'scripts/download_pretrained_stable_diffusion_model.py'),
+                    '--model_dir', os.path.join(model_dir, _dir),
+                    '--sd_model', sd_model
+                ]
+                if revision:
+                    cmd_args += ['--revision', revision]
+                output, err = cmd(cmd_args)
+                # checking for errors
+                handle_error_messages_from_cmd([output, err], cmd_args)
+
 
     @staticmethod
     def _get_next_identifier(used_identifiers: List[str]) -> str:
