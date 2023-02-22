@@ -2,7 +2,7 @@ jina==3.12.0
 prometheus_client==0.16.0
 accelerate==0.16.0
 torchvision==0.14.1
-transformers>=4.25.1
+transformers==4.26.0
 ftfy==6.1.1
 tensorboard==2.11.0
 modelcards==0.1.6
