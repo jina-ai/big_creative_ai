@@ -307,7 +307,7 @@ class BIGDreamBoothExecutor(Executor):
                     num_images=_num_images,
                     prompt=_category,
                     model_path=os.path.join(self.models_dir, self.PRE_TRAINDED_MODEL_DIR),
-                    batch_size=8,
+                    batch_size=4 if self.is_colab else 8,
                     revision='fp16' if self.is_colab else None
                 )
                 for i, doc in enumerate(_category_images):
@@ -453,7 +453,7 @@ class BIGDreamBoothExecutor(Executor):
                 num_images=num_images,
                 model_path=model_path,
                 prompt=prompt,
-                batch_size=8,
+                batch_size=4 if self.is_colab else 8,
                 revision='fp16' if self.is_colab else None
             )
 
