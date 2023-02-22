@@ -1,6 +1,6 @@
 # How to Personalize Stable Diffusion for ALL the Things
 
-This is the repository to [How to Personalize Stable Diffusion for ALL the Things](https://jina.ai/news/how-to-personalize-stable-diffusion-for-all-the-things/). It improves the [DreamBooth paper](https://dreambooth.github.io) by enabling Stable Diffusion to learn many styles & objects.
+This is the repository to [How to Personalize Stable Diffusion for ALL the Things](https://jina.ai/news/how-to-personalize-stable-diffusion-for-all-the-things/). It improves the [DreamBooth paper](https://dreambooth.github.io) by enabling Stable Diffusion to learn many styles & objects. You can try it out in this [Google Colab](https://colab.research.google.com/github/jina-ai/big_creative_ai/blob/main/big_metamodel.ipynb). 
 
 ## Finetuning Model (Step-by-step)
 
