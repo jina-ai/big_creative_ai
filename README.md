@@ -1,6 +1,6 @@
-# BIG: Back In the Game of Creative AI
+# How to Personalize Stable Diffusion for ALL the Things
 
-This is based on [DreamBooth in huggingface/diffusers](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth).
+This is the repository to [How to Personalize Stable Diffusion for ALL the Things](https://jina.ai/news/how-to-personalize-stable-diffusion-for-all-the-things/). It improves the [DreamBooth paper](https://dreambooth.github.io) by enabling Stable Diffusion to learn many styles & objects.
 
 ## Finetuning Model (Step-by-step)
 
