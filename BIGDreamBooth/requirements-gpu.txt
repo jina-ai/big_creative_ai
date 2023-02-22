@@ -1,9 +1,10 @@
-prometheus_client
+jina==3.12.0
+prometheus_client==0.15.0
 diffusers==0.10.0
-accelerate
-torchvision
-transformers>=4.21.0
-ftfy
-tensorboard
-modelcards
+accelerate==0.14.0
+torchvision==0.14.0
+transformers==4.24.0
+ftfy==6.1.1
+tensorboard==2.11.0
+modelcards==0.1.6
 markupsafe==2.0.1
